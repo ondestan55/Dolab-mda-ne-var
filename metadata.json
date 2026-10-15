@@ -1,0 +1,6 @@
+{
+  "name": "Dolabımda Ne Var AI",
+  "description": "Yapay zekâ destekli kişisel gardırop, akıllı kıyafet analizi ve stil kombin asistanı.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
