@@ -242,30 +242,87 @@ KURALLAR (ÇOK ÖNEMLİ):
   }
 });
 
-// Live Weather lookup with Open-Meteo free API (no keys needed!)
+// Live Weather lookup with automatic GPS, reverse geocoding, and Open-Meteo
 app.get('/api/weather', async (req: Request, res: Response) => {
   try {
-    const city = (req.query.city as string) || 'İstanbul';
+    let lat = req.query.lat ? parseFloat(req.query.lat as string) : null;
+    let lon = req.query.lon ? parseFloat(req.query.lon as string) : null;
+    let cityName = (req.query.city as string) || '';
+    const isAuto = req.query.auto === 'true' || (!cityName && !lat && !lon);
 
-    // 1. Geocode city
-    const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=tr&format=json`;
-    const geoRes = await fetch(geoUrl);
-    const geoData = await geoRes.json();
+    // 1. If auto mode and no coordinates, try IP Geolocation first
+    if (isAuto && (!lat || !lon)) {
+      try {
+        const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || '';
+        const ipUrl = clientIp && !clientIp.startsWith('127.') && !clientIp.startsWith('10.') && !clientIp.startsWith('192.168.')
+          ? `https://ipwho.is/${clientIp}`
+          : `https://ipwho.is/`;
+        const ipRes = await fetch(ipUrl);
+        const ipData = await ipRes.json();
 
-    if (!geoData.results || geoData.results.length === 0) {
-      return res.json({
-        city,
-        temperature: 19,
-        condition: 'Parçalı Bulutlu',
-        conditionCategory: 'Ilık',
-        isEstimated: true,
-      });
+        if (ipData && ipData.success !== false && ipData.latitude && ipData.longitude) {
+          lat = ipData.latitude;
+          lon = ipData.longitude;
+          cityName = ipData.city ? `${ipData.city}, ${ipData.country || ''}` : `${ipData.country || 'Konumunuz'}`;
+        }
+      } catch (e) {
+        console.warn('IP location fetch failed:', e);
+      }
     }
 
-    const { latitude, longitude, name, country } = geoData.results[0];
+    // 2. If coordinates are provided (from browser GPS or IP), reverse geocode city name if needed
+    if (lat !== null && lon !== null) {
+      if (!cityName) {
+        try {
+          const revUrl = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=tr`;
+          const revRes = await fetch(revUrl, {
+            headers: { 'User-Agent': 'DolabimdaNeVarAI/1.0' },
+          });
+          if (revRes.ok) {
+            const revData = await revRes.json();
+            const addr = revData.address;
+            cityName =
+              addr?.city ||
+              addr?.town ||
+              addr?.province ||
+              addr?.county ||
+              addr?.state ||
+              addr?.country ||
+              'Mevcut Konumunuz';
+            if (addr?.country && !cityName.includes(addr.country)) {
+              cityName = `${cityName}, ${addr.country}`;
+            }
+          }
+        } catch (e) {
+          console.warn('Reverse geocoding error:', e);
+          cityName = 'Mevcut Konumunuz';
+        }
+      }
+    } else {
+      // 3. Manual city name geocoding fallback
+      const targetCity = cityName || 'İstanbul';
+      const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(targetCity)}&count=1&language=tr&format=json`;
+      const geoRes = await fetch(geoUrl);
+      const geoData = await geoRes.json();
 
-    // 2. Fetch current weather
-    const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m&timezone=auto`;
+      if (!geoData.results || geoData.results.length === 0) {
+        return res.json({
+          city: targetCity,
+          temperature: 19,
+          condition: 'Parçalı Bulutlu',
+          conditionCategory: 'Ilık',
+          isEstimated: true,
+          isAutoDetected: false,
+        });
+      }
+
+      lat = geoData.results[0].latitude;
+      lon = geoData.results[0].longitude;
+      cityName = `${geoData.results[0].name}, ${geoData.results[0].country || ''}`;
+    }
+
+    // 4. Fetch real-time weather from Open-Meteo using resolved coordinates
+    const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m&timezone=auto`;
     const weatherRes = await fetch(weatherUrl);
     const weatherData = await weatherRes.json();
     const current = weatherData.current;
@@ -273,7 +330,7 @@ app.get('/api/weather', async (req: Request, res: Response) => {
     // Map WMO codes to Turkish descriptions & clothing category
     const code = current?.weather_code ?? 0;
     let condition = 'Açık Güneşli';
-    let conditionCategory = 'Ilık';
+    let conditionCategory: 'Sıcak' | 'Ilık' | 'Serin' | 'Soğuk' | 'Yağmurlu' | 'Rüzgarlı' = 'Ilık';
 
     if (code === 0) {
       condition = 'Açık Güneşli';
@@ -303,22 +360,26 @@ app.get('/api/weather', async (req: Request, res: Response) => {
     else if (temp < 10) conditionCategory = 'Soğuk';
 
     return res.json({
-      city: `${name}, ${country || ''}`,
+      city: cityName || 'Mevcut Konumunuz',
+      latitude: lat,
+      longitude: lon,
       temperature: temp,
       apparentTemperature: Math.round(current?.apparent_temperature ?? temp),
       windSpeed: current?.wind_speed_10m ?? 0,
       condition,
       conditionCategory,
       isEstimated: false,
+      isAutoDetected: isAuto,
     });
   } catch (err) {
     console.error('Weather error:', err);
     return res.json({
-      city: req.query.city || 'İstanbul',
+      city: req.query.city || 'Mevcut Konum',
       temperature: 19,
       condition: 'Parçalı Bulutlu',
       conditionCategory: 'Ilık',
       isEstimated: true,
+      isAutoDetected: false,
     });
   }
 });

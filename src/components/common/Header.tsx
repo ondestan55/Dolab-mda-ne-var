@@ -1,9 +1,10 @@
-import React from 'react';
 import {
   Sparkles,
   CloudSun,
   Plus,
   Compass,
+  MapPin,
+  RefreshCw,
 } from 'lucide-react';
 import { WeatherInfo } from '../../types/wardrobe';
 
@@ -12,6 +13,8 @@ interface HeaderProps {
   hasGeminiKey: boolean;
   onOpenAddModal: () => void;
   onOpenGenerate: () => void;
+  onRefreshLocation?: () => void;
+  isDetectingLocation?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -19,6 +22,8 @@ export const Header: React.FC<HeaderProps> = ({
   hasGeminiKey,
   onOpenAddModal,
   onOpenGenerate,
+  onRefreshLocation,
+  isDetectingLocation,
 }) => {
   const today = new Date();
   const formattedDate = new Intl.DateTimeFormat('tr-TR', {
@@ -44,11 +49,24 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {weather && (
-          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#F3EDE6] border border-[#E7E0D8] text-xs text-[#44403C]">
-            <CloudSun className="w-3.5 h-3.5 text-[#8C7A6B]" />
-            <span className="font-medium">{weather.city}:</span>
-            <span className="font-semibold">{weather.temperature}°C</span>
-            <span className="text-[#8C7A6B]">({weather.condition})</span>
+          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#F3EDE6] border border-[#E7E0D8] text-xs text-[#44403C]">
+            <MapPin className="w-3.5 h-3.5 text-[#4A5320] shrink-0" />
+            <span className="font-semibold truncate max-w-[150px]">{weather.city}</span>
+            <span className="text-[#8C7A6B]">•</span>
+            <span className="font-bold">{weather.temperature}°C</span>
+            <span className="text-[#8C7A6B] truncate max-w-[120px]">({weather.condition})</span>
+            {onRefreshLocation && (
+              <button
+                onClick={onRefreshLocation}
+                disabled={isDetectingLocation}
+                className="ml-1 p-0.5 text-[#8C7A6B] hover:text-[#1C1917] rounded-full hover:bg-black/5 transition"
+                title="Konumu ve hava durumunu otomatik güncelle"
+              >
+                <RefreshCw
+                  className={`w-3 h-3 ${isDetectingLocation ? 'animate-spin text-[#1C1917]' : ''}`}
+                />
+              </button>
+            )}
           </div>
         )}
       </div>

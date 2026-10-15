@@ -146,6 +146,9 @@ export interface WeatherInfo {
   conditionCategory: 'Sıcak' | 'Ilık' | 'Serin' | 'Soğuk' | 'Yağmurlu' | 'Rüzgarlı';
   windSpeed?: number;
   isEstimated?: boolean;
+  isAutoDetected?: boolean;
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface ClothingAnalysisResult {

@@ -12,6 +12,8 @@ import {
   Compass,
   AlertTriangle,
   Lock,
+  MapPin,
+  RefreshCw,
 } from 'lucide-react';
 import { UserPreferences, WeatherInfo } from '../../types/wardrobe';
 
@@ -20,6 +22,8 @@ interface SettingsViewProps {
   onUpdatePreferences: (prefs: UserPreferences) => Promise<void>;
   weather: WeatherInfo | null;
   onRefreshWeather: (city: string) => Promise<void>;
+  onTriggerAutoLocation: () => Promise<void>;
+  isDetectingLocation?: boolean;
   hasGeminiKey: boolean;
   onLoadDemoData: () => Promise<void>;
   onRemoveDemoData: () => Promise<void>;
@@ -35,6 +39,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onUpdatePreferences,
   weather,
   onRefreshWeather,
+  onTriggerAutoLocation,
+  isDetectingLocation,
   hasGeminiKey,
   onLoadDemoData,
   onRemoveDemoData,
@@ -108,74 +114,113 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <div className="bg-[#FAF8F5] p-6 rounded-3xl border border-[#E7E0D8] space-y-4">
         <div className="flex items-center gap-2 border-b border-[#E7E0D8] pb-3">
           <CloudSun className="w-5 h-5 text-[#8C7A6B]" />
-          <h3 className="font-serif-editorial text-xl font-bold text-[#1C1917]">
-            Şehir ve Canlı Hava Durumu
-          </h3>
+          <div className="flex-1">
+            <h3 className="font-serif-editorial text-xl font-bold text-[#1C1917]">
+              Hava Durumu ve Konum
+            </h3>
+            <p className="text-xs text-[#786C60]">
+              Konumunuz otomatik olarak GPS veya IP üzerinden algılanır.
+            </p>
+          </div>
+          <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+            Otomatik Algılama Aktif
+          </span>
         </div>
 
-        <form onSubmit={handleSaveGeneral} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-[#44403C] uppercase tracking-wider mb-1">
-              Bulunduğunuz Şehir
-            </label>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <input
-                type="text"
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                placeholder="ör. İstanbul, Ankara, İzmir, Londra..."
-                className="flex-1 px-3.5 py-2.5 rounded-xl bg-white border border-[#D5C9BE] text-sm text-[#1C1917] focus:outline-hidden focus:border-[#1C1917]"
-              />
-              <button
-                type="submit"
-                disabled={isUpdatingCity}
-                className="px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-[#1C1917] text-[#FAF8F5] hover:bg-[#38332E] transition shrink-0"
-              >
-                {isUpdatingCity ? 'Güncelleniyor...' : 'Kaydet & Hava Durumunu Güncelle'}
-              </button>
+        {/* Auto Location Card */}
+        <div className="p-4 rounded-2xl bg-[#F0EBE1] border border-[#DDD4C7] space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <span className="text-xs font-bold text-[#1C1917] flex items-center gap-1.5">
+                <MapPin className="w-4 h-4 text-[#4A5320]" />
+                Otomatik Konum Tespiti
+              </span>
+              <p className="text-xs text-[#5C5248] mt-0.5">
+                Cihazınızın GPS ve IP verilerini kullanarak anlık konumu ve hava durumunu otomatik günceller.
+              </p>
             </div>
-          </div>
 
-          <div className="flex flex-wrap items-center gap-1.5 pt-1">
-            <span className="text-xs text-[#8C7A6B]">Hızlı Seç:</span>
-            {popularCities.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setCity(c)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition ${
-                  city.toLowerCase() === c.toLowerCase()
-                    ? 'bg-[#1C1917] text-[#FAF8F5] border-[#1C1917]'
-                    : 'bg-white text-[#5C5248] border-[#D5C9BE] hover:bg-[#F3EDE6]'
-                }`}
-              >
-                {c}
-              </button>
-            ))}
+            <button
+              type="button"
+              onClick={onTriggerAutoLocation}
+              disabled={isDetectingLocation}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-[#1C1917] text-[#FAF8F5] hover:bg-[#38332E] transition shadow-xs shrink-0"
+            >
+              <RefreshCw className={`w-4 h-4 ${isDetectingLocation ? 'animate-spin' : ''}`} />
+              <span>{isDetectingLocation ? 'Konum Alınıyor...' : 'Konumumu Otomatik Algıla'}</span>
+            </button>
           </div>
 
           {weather && (
-            <div className="p-3.5 rounded-2xl bg-[#F4EFE6] border border-[#E7E0D8] text-xs text-[#5C5248] flex items-center justify-between">
+            <div className="pt-2 border-t border-[#DDD4C7] flex flex-wrap items-center justify-between text-xs text-[#5C5248] gap-2">
               <div>
-                <span className="font-semibold text-[#1C1917]">{weather.city}</span>
+                <span className="font-bold text-[#1C1917]">{weather.city}</span>
                 <span className="mx-2">•</span>
                 <span>{weather.condition}</span>
                 <span className="mx-2">•</span>
-                <span className="font-bold">{weather.temperature}°C</span>
+                <span className="font-semibold">{weather.temperature}°C</span>
               </div>
-              <span className="text-[10px] text-[#8C7A6B]">
-                {weather.isEstimated ? 'Varsayılan' : 'Canlı Open-Meteo'}
+              <span className="text-[11px] text-[#8C7A6B]">
+                {weather.latitude && weather.longitude
+                  ? `Koordinat: ${weather.latitude.toFixed(2)}, ${weather.longitude.toFixed(2)}`
+                  : 'Canlı Open-Meteo'}
               </span>
             </div>
           )}
+        </div>
 
-          {saveSuccess && (
-            <div className="p-3 rounded-xl bg-emerald-50 text-emerald-800 text-xs font-medium flex items-center gap-2">
-              <Check className="w-4 h-4" />
-              <span>Ayarlar başarıyla kaydedildi.</span>
-            </div>
-          )}
-        </form>
+        {/* Optional Manual Override Accordion */}
+        <div className="pt-2">
+          <details className="text-xs text-[#6B5E52] group">
+            <summary className="cursor-pointer font-semibold hover:text-[#1C1917] select-none py-1">
+              Farklı bir şehir seçmek mi istiyorsunuz? (Seyahat & Manuel Seçim)
+            </summary>
+            <form onSubmit={handleSaveGeneral} className="mt-3 space-y-3 pt-2 border-t border-[#E7E0D8]">
+              <div>
+                <label className="block text-xs font-semibold text-[#44403C] uppercase tracking-wider mb-1">
+                  Şehir Adı
+                </label>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    placeholder="ör. Londra, Paris, Antalya, İzmir..."
+                    className="flex-1 px-3.5 py-2 rounded-xl bg-white border border-[#D5C9BE] text-sm text-[#1C1917] focus:outline-hidden"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isUpdatingCity}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold bg-[#FAF8F5] text-[#1C1917] border border-[#D5C9BE] hover:bg-[#F3EDE6] transition"
+                  >
+                    Şehri Ayarla
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs text-[#8C7A6B]">Hızlı Seçim:</span>
+                {popularCities.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setCity(c)}
+                    className="px-2 py-0.5 rounded-lg text-xs font-medium border bg-white border-[#D5C9BE] hover:bg-[#F3EDE6]"
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </form>
+          </details>
+        </div>
+
+        {saveSuccess && (
+          <div className="p-3 rounded-xl bg-emerald-50 text-emerald-800 text-xs font-medium flex items-center gap-2">
+            <Check className="w-4 h-4" />
+            <span>Ayarlar başarıyla kaydedildi.</span>
+          </div>
+        )}
       </div>
 
       {/* 2. AI Connection Status */}

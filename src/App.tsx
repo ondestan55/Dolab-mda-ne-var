@@ -42,6 +42,7 @@ export default function App() {
   });
   const [weather, setWeather] = useState<WeatherInfo | null>(null);
   const [hasGeminiKey, setHasGeminiKey] = useState<boolean>(false);
+  const [isDetectingLocation, setIsDetectingLocation] = useState<boolean>(false);
 
   // Modals
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -77,9 +78,12 @@ export default function App() {
         setPreferences(savedPrefs);
         setHasGeminiKey(serverStatus.hasGeminiKey);
 
-        // Fetch live weather for configured city
-        const weatherData = await fetchLiveWeather(savedPrefs.city || 'İstanbul');
+        // Automatically detect user location & real-time weather via GPS / IP
+        const weatherData = await fetchLiveWeather(undefined, true);
         setWeather(weatherData);
+        if (weatherData.city) {
+          setPreferences((prev) => ({ ...prev, city: weatherData.city }));
+        }
 
         // If completely empty first time, automatically seed with demo items for immediate delight!
         if (savedItems.length === 0 && savedOutfits.length === 0) {
@@ -267,6 +271,25 @@ export default function App() {
     }
   };
 
+  const handleAutoDetectLocation = async () => {
+    setIsDetectingLocation(true);
+    try {
+      const w = await fetchLiveWeather(undefined, true);
+      setWeather(w);
+      if (w.city) {
+        const updated = { ...preferences, city: w.city };
+        setPreferences(updated);
+        await wardrobeDb.savePreferences(updated);
+      }
+      showToast(`Konum otomatik güncellendi: ${w.city} (${w.temperature}°C)`);
+    } catch (e) {
+      console.error('Auto location error:', e);
+      showToast('Konum algılanırken bir sorun oluştu.');
+    } finally {
+      setIsDetectingLocation(false);
+    }
+  };
+
   const handleRefreshWeather = async (city: string) => {
     const w = await fetchLiveWeather(city);
     setWeather(w);
@@ -305,12 +328,14 @@ export default function App() {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-h-screen min-w-0 pb-20 md:pb-10">
-        {/* Top Header */}
+        {/* Top Header with automatic location refresh */}
         <Header
           weather={weather}
           hasGeminiKey={hasGeminiKey}
           onOpenAddModal={() => setIsAddModalOpen(true)}
           onOpenGenerate={() => setCurrentTab('generate')}
+          onRefreshLocation={handleAutoDetectLocation}
+          isDetectingLocation={isDetectingLocation}
         />
 
         {/* Tab Views */}
@@ -397,6 +422,8 @@ export default function App() {
               onUpdatePreferences={handleUpdatePreferences}
               weather={weather}
               onRefreshWeather={handleRefreshWeather}
+              onTriggerAutoLocation={handleAutoDetectLocation}
+              isDetectingLocation={isDetectingLocation}
               hasGeminiKey={hasGeminiKey}
               onLoadDemoData={handleLoadDemoData}
               onRemoveDemoData={handleRemoveDemoData}

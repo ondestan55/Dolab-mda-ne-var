@@ -103,9 +103,53 @@ export async function generateWardrobeOutfits(
   };
 }
 
-export async function fetchLiveWeather(cityName: string = 'İstanbul'): Promise<WeatherInfo> {
+export async function getDeviceCoordinates(): Promise<{ lat: number; lon: number } | null> {
+  if (typeof window === 'undefined' || !('geolocation' in navigator)) {
+    return null;
+  }
+
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        resolve({
+          lat: pos.coords.latitude,
+          lon: pos.coords.longitude,
+        });
+      },
+      (err) => {
+        console.warn('Geolocation permission not granted or unavailable, falling back to IP detection:', err.message);
+        resolve(null);
+      },
+      { timeout: 6000, maximumAge: 300000 }
+    );
+  });
+}
+
+export async function fetchLiveWeather(
+  cityName?: string,
+  forceAuto: boolean = false
+): Promise<WeatherInfo> {
   try {
-    const res = await fetch(`/api/weather?city=${encodeURIComponent(cityName)}`);
+    // 1. If automatic mode or no city provided, check device GPS first
+    if (forceAuto || !cityName) {
+      const coords = await getDeviceCoordinates();
+      if (coords) {
+        const res = await fetch(`/api/weather?lat=${coords.lat}&lon=${coords.lon}&auto=true`);
+        if (res.ok) {
+          return await res.json();
+        }
+      }
+
+      // If no GPS, call server auto IP detection
+      const autoRes = await fetch('/api/weather?auto=true');
+      if (autoRes.ok) {
+        return await autoRes.json();
+      }
+    }
+
+    // 2. Query specific city
+    const targetCity = cityName || 'İstanbul';
+    const res = await fetch(`/api/weather?city=${encodeURIComponent(targetCity)}`);
     if (res.ok) {
       return await res.json();
     }
@@ -113,14 +157,15 @@ export async function fetchLiveWeather(cityName: string = 'İstanbul'): Promise<
     console.warn('Weather fetch error:', err);
   }
 
-  // Default fallback
+  // Default graceful fallback
   return {
-    city: cityName,
+    city: cityName || 'Konumunuz',
     temperature: 20,
     apparentTemperature: 20,
     condition: 'Parçalı Bulutlu',
     conditionCategory: 'Ilık',
     windSpeed: 12,
     isEstimated: true,
+    isAutoDetected: forceAuto,
   };
 }
