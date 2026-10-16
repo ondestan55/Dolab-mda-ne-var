@@ -13,6 +13,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { Outfit, ClothingItem, CATEGORY_LABELS } from '../../types/wardrobe';
+import { OutfitSilhouetteView } from './OutfitSilhouetteView';
 
 interface OutfitDetailModalProps {
   outfit: Outfit | null;
@@ -66,7 +67,6 @@ export const OutfitDetailModal: React.FC<OutfitDetailModalProps> = ({
       isDemoOutfit: false,
     };
     await onUpdateOutfit(copy);
-    alert('Kombin kopyalandı ve kombinlerinize eklendi.');
   };
 
   const handleSetRating = async (rating: number) => {
@@ -83,7 +83,6 @@ export const OutfitDetailModal: React.FC<OutfitDetailModalProps> = ({
     setSwappingItemId(null);
   };
 
-  // Candidate replacement items for the piece being swapped (same category)
   const itemToSwap = swappingItemId ? itemsMap.get(swappingItemId) : null;
   const candidateReplacements = itemToSwap
     ? allItems.filter(
@@ -95,16 +94,16 @@ export const OutfitDetailModal: React.FC<OutfitDetailModalProps> = ({
     : [];
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/55 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
-      <div className="bg-[#FAF8F5] w-full max-w-3xl rounded-3xl border border-[#E7E0D8] shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+      <div className="bg-[#FAF8F5] w-full max-w-4xl rounded-3xl border border-[#E7E0D8] shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Top Header */}
-        <div className="px-6 py-4 border-b border-[#E7E0D8] bg-[#F5EFEB]/70 flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-[#E7E0D8] bg-[#F5EFEB]/80 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wider bg-[#1C1917] text-[#FAF8F5]">
               {outfit.style}
             </span>
             <span className="text-xs text-[#8C7A6B]">
-              {outfit.occasion} • {outfit.season}
+              {outfit.occasion} • {outfit.season} • {currentItems.length} Parça
             </span>
           </div>
 
@@ -116,6 +115,7 @@ export const OutfitDetailModal: React.FC<OutfitDetailModalProps> = ({
                   ? 'bg-rose-50 text-rose-600 hover:bg-rose-100'
                   : 'hover:bg-[#EAE2D5] text-[#786C60]'
               }`}
+              title={outfit.isFavorite ? 'Favorilerden çıkar' : 'Favorilere ekle'}
             >
               <Heart
                 className={`w-5 h-5 ${outfit.isFavorite ? 'fill-current' : ''}`}
@@ -228,198 +228,186 @@ export const OutfitDetailModal: React.FC<OutfitDetailModalProps> = ({
                 </div>
               </div>
 
-              {/* Items in this outfit (with Swap Piece feature) */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-[#44403C]">
-                    Kombindeki Parçalar ({currentItems.length})
-                  </h4>
-                  <span className="text-[11px] text-[#8C7A6B]">
-                    Parçayı değiştirmek için üzerindeki "Değiştir" butonuna tıklayın
+              {/* Main Content: Left Column Mannequin Studio, Right Column Details & Swapping */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Left 6 cols: Mannequin Layered Silhouette */}
+                <div className="lg:col-span-6 flex flex-col justify-center">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-[#8C7A6B] mb-2 block">
+                    Giydirilmiş Kombin Görünümü
                   </span>
+                  <OutfitSilhouetteView
+                    items={currentItems}
+                    outfitName={outfit.name}
+                    interactive={true}
+                    onItemClick={(item) => setSwappingItemId(item.id)}
+                    className="min-h-[420px]"
+                  />
+                  <p className="text-[11px] text-[#8C7A6B] text-center mt-2">
+                    Değiştirmek istediğiniz parçanın üzerine tıklayabilirsiniz.
+                  </p>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {currentItems.map((item) => (
-                    <div
-                      key={item.id}
-                      className="bg-[#F7F4EE] rounded-2xl border border-[#E7E0D8] p-2.5 flex flex-col justify-between group"
-                    >
-                      <div className="aspect-4/5 rounded-xl overflow-hidden bg-white mb-2">
-                        <img
-                          src={item.imageUrl}
-                          alt={item.name}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <div>
-                        <span className="text-[10px] font-semibold text-[#8C7A6B] uppercase block">
-                          {CATEGORY_LABELS[item.category] || item.category}
-                        </span>
-                        <h5 className="font-serif-editorial text-xs sm:text-sm font-bold text-[#1C1917] line-clamp-1">
-                          {item.name}
-                        </h5>
-                      </div>
-                      <button
-                        onClick={() => setSwappingItemId(item.id)}
-                        className="mt-2 w-full py-1 rounded-lg text-[11px] font-semibold text-[#5C5248] bg-white border border-[#DDD4C7] hover:bg-[#FAF8F5] transition flex items-center justify-center gap-1"
-                      >
-                        <RefreshCw className="w-3 h-3" />
-                        <span>Değiştir</span>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Swap Piece Selector Drawer */}
-              {swappingItemId && itemToSwap && (
-                <div className="p-4 rounded-2xl bg-[#F0EBE1] border border-[#DDD4C7] space-y-3 animate-in fade-in duration-150">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-xs font-semibold text-[#1C1917]">
-                        "{itemToSwap.name}" yerine dolaptan başka bir parça seçin:
-                      </span>
-                      <p className="text-[11px] text-[#786C60]">
-                        Kategori: {CATEGORY_LABELS[itemToSwap.category]}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => setSwappingItemId(null)}
-                      className="text-xs font-medium text-[#786C60] hover:text-[#1C1917]"
-                    >
-                      Kapat
-                    </button>
-                  </div>
-
-                  {candidateReplacements.length === 0 ? (
-                    <p className="text-xs text-[#8C7A6B] italic">
-                      Dolabınızda bu kategoride başka uygun alternatif bulunamadı.
-                    </p>
-                  ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                      {candidateReplacements.map((cand) => (
+                {/* Right 6 cols: Pieces list, descriptions, actions */}
+                <div className="lg:col-span-6 space-y-4">
+                  <div>
+                    <h4 className="text-xs font-semibold uppercase tracking-wider text-[#44403C] mb-2">
+                      Kombindeki Parçalar ({currentItems.length})
+                    </h4>
+                    <div className="grid grid-cols-2 gap-2.5 max-h-[260px] overflow-y-auto pr-1">
+                      {currentItems.map((item) => (
                         <div
-                          key={cand.id}
-                          onClick={() => handleSwapItem(cand)}
-                          className="p-2 rounded-xl bg-white border border-[#D5C9BE] hover:border-[#1C1917] cursor-pointer transition flex items-center gap-2"
+                          key={item.id}
+                          className="bg-[#F7F4EE] rounded-xl border border-[#E7E0D8] p-2 flex items-center gap-2.5"
                         >
                           <img
-                            src={cand.imageUrl}
-                            alt={cand.name}
-                            className="w-10 h-12 rounded-lg object-cover"
+                            src={item.imageUrl}
+                            alt={item.name}
+                            className="w-12 h-14 rounded-lg object-contain bg-white shrink-0"
                           />
                           <div className="min-w-0 flex-1">
-                            <span className="text-xs font-semibold text-[#1C1917] block truncate">
-                              {cand.name}
+                            <span className="text-[9px] font-semibold text-[#8C7A6B] uppercase block">
+                              {CATEGORY_LABELS[item.category]}
                             </span>
-                            <span className="text-[10px] text-[#8C7A6B] block">
-                              {cand.primaryColor}
+                            <span className="font-serif-editorial text-xs font-bold text-[#1C1917] block truncate">
+                              {item.name}
                             </span>
+                            <button
+                              onClick={() => setSwappingItemId(item.id)}
+                              className="text-[10px] text-[#4A5320] hover:underline font-semibold flex items-center gap-0.5 mt-0.5"
+                            >
+                              <RefreshCw className="w-2.5 h-2.5" />
+                              <span>Değiştir</span>
+                            </button>
                           </div>
                         </div>
                       ))}
                     </div>
-                  )}
-                </div>
-              )}
-
-              {/* Rationale & Styling Notes */}
-              <div className="space-y-3">
-                <div className="p-4 rounded-2xl bg-[#F4EFE6] border border-[#E7E0D8] space-y-2 text-xs">
-                  <div>
-                    <span className="font-semibold text-[#1C1917] block">
-                      Stilist Açıklaması:
-                    </span>
-                    <p className="text-[#5C5248] leading-relaxed mt-0.5">
-                      {outfit.description}
-                    </p>
                   </div>
 
-                  {outfit.colorHarmonyReasoning && (
-                    <div className="pt-2 border-t border-[#E7E0D8]">
-                      <span className="font-semibold text-[#1C1917] block">
-                        Renk & Doku Uyumu:
-                      </span>
-                      <p className="text-[#5C5248] leading-relaxed mt-0.5">
-                        {outfit.colorHarmonyReasoning}
-                      </p>
+                  {/* Swap Piece Drawer */}
+                  {swappingItemId && itemToSwap && (
+                    <div className="p-3.5 rounded-2xl bg-[#F0EBE1] border border-[#DDD4C7] space-y-2 animate-in fade-in duration-150">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-xs font-semibold text-[#1C1917]">
+                            "{itemToSwap.name}" yerine seçin:
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => setSwappingItemId(null)}
+                          className="text-xs font-medium text-[#786C60] hover:text-[#1C1917]"
+                        >
+                          Kapat
+                        </button>
+                      </div>
+
+                      {candidateReplacements.length === 0 ? (
+                        <p className="text-xs text-[#8C7A6B] italic">
+                          Dolabınızda bu kategoride başka uygun alternatif bulunamadı.
+                        </p>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2 max-h-[140px] overflow-y-auto">
+                          {candidateReplacements.map((cand) => (
+                            <div
+                              key={cand.id}
+                              onClick={() => handleSwapItem(cand)}
+                              className="p-1.5 rounded-xl bg-white border border-[#D5C9BE] hover:border-[#1C1917] cursor-pointer transition flex items-center gap-2"
+                            >
+                              <img
+                                src={cand.imageUrl}
+                                alt={cand.name}
+                                className="w-8 h-10 rounded-lg object-contain bg-[#FAF8F5]"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <span className="text-xs font-semibold text-[#1C1917] block truncate">
+                                  {cand.name}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
 
-                  {outfit.weatherSuitability && (
-                    <div className="pt-2 border-t border-[#E7E0D8]">
-                      <span className="font-semibold text-[#1C1917] block">
-                        Mevsim & Hava Koşulu:
-                      </span>
-                      <p className="text-[#5C5248] leading-relaxed mt-0.5">
-                        {outfit.weatherSuitability}
-                      </p>
-                    </div>
-                  )}
+                  {/* Editorial Advice Notes */}
+                  <div className="space-y-2.5 bg-[#FAF8F5] rounded-2xl border border-[#E7E0D8] p-4">
+                    {outfit.description && (
+                      <div>
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-[#8C7A6B] block">
+                          Stil Notu
+                        </span>
+                        <p className="text-xs text-[#44403C] mt-0.5 leading-relaxed">
+                          {outfit.description}
+                        </p>
+                      </div>
+                    )}
 
-                  {outfit.stylingTips && (
-                    <div className="pt-2 border-t border-[#E7E0D8]">
-                      <span className="font-semibold text-[#1C1917] block">
-                        Stil İpucu:
-                      </span>
-                      <p className="text-[#5C5248] leading-relaxed mt-0.5">
-                        {outfit.stylingTips}
-                      </p>
-                    </div>
-                  )}
+                    {outfit.colorHarmonyReasoning && (
+                      <div>
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-[#8C7A6B] block">
+                          Renk & Katman Uyumu
+                        </span>
+                        <p className="text-xs text-[#5C5248] mt-0.5 leading-relaxed italic">
+                          {outfit.colorHarmonyReasoning}
+                        </p>
+                      </div>
+                    )}
+
+                    {outfit.stylingTips && (
+                      <div>
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-[#8C7A6B] block">
+                          Küratör İpucu
+                        </span>
+                        <p className="text-xs text-[#4A5320] mt-0.5 leading-relaxed font-medium">
+                          ✦ {outfit.stylingTips}
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
+              </div>
+
+              {/* Action Toolbar */}
+              <div className="pt-4 border-t border-[#E7E0D8] flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => onLogWear(outfit.id, outfit.itemIds)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-[#1C1917] text-[#FAF8F5] hover:bg-[#38332E] transition shadow-xs"
+                  >
+                    <PlusCircle className="w-3.5 h-3.5" />
+                    <span>Bugün Giydim ({outfit.wearCount})</span>
+                  </button>
+
+                  <button
+                    onClick={() => onSchedule(outfit)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium bg-white text-[#44403C] border border-[#D5C9BE] hover:bg-[#F3EDE6] transition"
+                  >
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span>Haftalık Plana Ekle</span>
+                  </button>
+
+                  <button
+                    onClick={handleDuplicate}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium text-[#786C60] hover:bg-[#EAE2D5] transition"
+                    title="Kombini Kopyala"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Kopyala</span>
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="inline-flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-medium text-rose-700 hover:bg-rose-50 transition"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Kombini Sil</span>
+                </button>
               </div>
             </>
           )}
         </div>
-
-        {/* Bottom Actions Bar */}
-        {!showDeleteConfirm && (
-          <div className="px-6 py-4 border-t border-[#E7E0D8] bg-[#F5EFEB]/70 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-rose-700 hover:bg-rose-100/70 transition"
-              >
-                <Trash2 className="w-4 h-4" />
-                <span>Kombini Sil</span>
-              </button>
-
-              <button
-                onClick={handleDuplicate}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-[#5C5248] hover:bg-[#EAE2D5] transition"
-              >
-                <Copy className="w-4 h-4" />
-                <span>Kopyala</span>
-              </button>
-            </div>
-
-            <div className="flex items-center gap-2.5">
-              <button
-                onClick={() => {
-                  onSchedule(outfit);
-                  onClose();
-                }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-[#FAF8F5] text-[#1C1917] border border-[#D5C9BE] hover:bg-[#F3EDE6] transition"
-              >
-                <Calendar className="w-4 h-4 text-[#8C7A6B]" />
-                <span>Takvime Planla</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  onLogWear(outfit.id, outfit.itemIds);
-                  alert('Kombin bugün giyildi olarak işaretlendi (+1)!');
-                }}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-[#1C1917] text-[#FAF8F5] hover:bg-[#38332E] transition shadow-xs active:scale-98"
-              >
-                <PlusCircle className="w-4 h-4 text-[#E6DEC8]" />
-                <span>Bugün Giydim (+1)</span>
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

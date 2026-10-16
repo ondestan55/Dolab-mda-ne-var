@@ -81,7 +81,7 @@ export const ClothingCard: React.FC<ClothingCardProps> = ({
       <div className="p-3.5 flex-1 flex flex-col justify-between space-y-2">
         <div>
           <div className="flex items-center justify-between gap-1 text-[11px] text-[#8C7A6B]">
-            <span className="truncate">{item.brand || item.subcategory}</span>
+            <span className="truncate">{item.subcategory}</span>
             <span className="font-medium shrink-0">{item.season}</span>
           </div>
           <h3 className="font-serif-editorial text-base font-bold text-[#1C1917] leading-tight line-clamp-1 mt-0.5 group-hover:text-[#4A5320] transition-colors">

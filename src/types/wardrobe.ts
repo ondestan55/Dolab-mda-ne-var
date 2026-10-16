@@ -69,6 +69,8 @@ export const OCCASIONS: OccasionType[] = [
   'Seyahat',
 ];
 
+export type LayeringPreferenceType = 'minimal' | 'balanced' | 'rich';
+
 export interface ClothingItem {
   id: string;
   name: string;
@@ -81,10 +83,6 @@ export interface ClothingItem {
   season: SeasonType;
   style: StyleType;
   occasion: OccasionType;
-  brand?: string;
-  size?: string;
-  purchasePrice?: number;
-  purchaseDate?: string;
   wearCount: number;
   status: 'active' | 'laundry' | 'archived';
   notes?: string;
@@ -118,37 +116,28 @@ export interface OutfitPlan {
   outfitId: string;
   occasion?: string;
   weatherNote?: string;
-  note?: string;
+  isWorn?: boolean;
+  notes?: string;
 }
 
 export interface WearLog {
   id: string;
-  date: string;
+  date: string; // YYYY-MM-DD
   outfitId?: string;
-  itemIds: string[];
-  notes?: string;
+  clothingItemIds: string[];
+  occasion?: string;
+  rating?: number;
+  createdAt: number;
 }
 
 export interface UserPreferences {
-  preferredStyles: string[];
+  preferredStyles: StyleType[];
   preferredColors: string[];
   city: string;
   allowMultipleOutfitsPerDay: boolean;
   theme: 'light';
   genderPreference: 'unisex' | 'female' | 'male';
-}
-
-export interface WeatherInfo {
-  city: string;
-  temperature: number;
-  apparentTemperature?: number;
-  condition: string;
-  conditionCategory: 'Sıcak' | 'Ilık' | 'Serin' | 'Soğuk' | 'Yağmurlu' | 'Rüzgarlı';
-  windSpeed?: number;
-  isEstimated?: boolean;
-  isAutoDetected?: boolean;
-  latitude?: number;
-  longitude?: number;
+  layeringPreference?: LayeringPreferenceType;
 }
 
 export interface ClothingAnalysisResult {
@@ -158,10 +147,20 @@ export interface ClothingAnalysisResult {
   primaryColor: string;
   secondaryColor?: string;
   pattern: string;
-  fabric?: string;
   style: StyleType;
   season: SeasonType;
   occasion: OccasionType;
   pairingSuggestions?: string;
   confidence: number;
+}
+
+export interface WeatherInfo {
+  city: string;
+  temperature: number;
+  apparentTemperature: number;
+  condition: string;
+  conditionCategory: 'Sıcak' | 'Ilık' | 'Serin' | 'Soğuk' | 'Yağmurlu';
+  windSpeed: number;
+  isEstimated?: boolean;
+  isAutoDetected?: boolean;
 }

@@ -1,4 +1,4 @@
-import { ClothingItem, Outfit } from '../types/wardrobe';
+import { ClothingItem, Outfit, LayeringPreferenceType } from '../types/wardrobe';
 
 export interface GenerationParams {
   occasion?: string;
@@ -7,6 +7,7 @@ export interface GenerationParams {
   weather?: string;
   temperature?: number;
   colorPreference?: string;
+  layeringPreference?: LayeringPreferenceType;
   includeFavorites?: boolean;
   excludeRecentlyWorn?: boolean;
   customPrompt?: string;
@@ -22,7 +23,8 @@ export interface GeneratedOutfitResult {
 // Color compatibility matrix for local pairing
 const NEUTRALS = ['siyah', 'beyaz', 'ekru', 'krem', 'bej', 'gri', 'antrasit', 'kahverengi', 'taba'];
 
-function areColorsHarmonious(colorA: string, colorB: string): boolean {
+export function areColorsHarmonious(colorA: string, colorB: string): boolean {
+  if (!colorA || !colorB) return true;
   const a = colorA.toLowerCase();
   const b = colorB.toLowerCase();
   if (a === b) return true; // Monochrome
@@ -30,10 +32,105 @@ function areColorsHarmonious(colorA: string, colorB: string): boolean {
   if (
     (a.includes('mavi') && b.includes('bej')) ||
     (a.includes('haki') && b.includes('krem')) ||
-    (a.includes('lacivert') && b.includes('bordo'))
+    (a.includes('lacivert') && b.includes('bordo')) ||
+    (a.includes('kahverengi') && b.includes('mavi'))
   )
     return true;
   return false;
+}
+
+/**
+ * STRICT OUTFIT SANITIZER & VALIDATOR
+ * Guarantees that:
+ * 1. NEVER 2 bottoms together (e.g. no jeans + leggings, no shorts + trousers).
+ * 2. An outfit MUST have either:
+ *    - Exactly 1 Dress OR
+ *    - At least 1 Top + Exactly 1 Bottom
+ * 3. Never duplicate shoes (maximum 1 pair of shoes)
+ * 4. Maximum 1 bag
+ * 5. Dynamic piece counts from 3 up to 7 pieces without rigid 4-piece limits!
+ */
+export function sanitizeAndValidateOutfit(
+  itemIds: string[],
+  allWardrobeItems: ClothingItem[]
+): { validItemIds: string[]; isValid: boolean; correctionsMade: string[] } {
+  const itemMap = new Map(allWardrobeItems.map((i) => [i.id, i]));
+  const items = itemIds.map((id) => itemMap.get(id)).filter((i): i is ClothingItem => i !== undefined);
+
+  const correctionsMade: string[] = [];
+  const finalItemIds: string[] = [];
+
+  const dresses = items.filter((i) => i.category === 'dress');
+  const bottoms = items.filter((i) => i.category === 'bottom');
+  const tops = items.filter((i) => i.category === 'top');
+  const outerwear = items.filter((i) => i.category === 'outerwear');
+  const shoes = items.filter((i) => i.category === 'shoes');
+  const bags = items.filter((i) => i.category === 'bag');
+  const accessories = items.filter((i) => i.category === 'accessory');
+
+  // Case 1: Dress present
+  if (dresses.length > 0) {
+    // Keep 1 dress
+    finalItemIds.push(dresses[0].id);
+    if (bottoms.length > 0) {
+      correctionsMade.push('Elbise ile gereksiz alt giyim çıkarıldı.');
+    }
+  } else {
+    // Case 2: Standard outfit (Must have tops and EXACTLY 1 bottom)
+    if (bottoms.length > 1) {
+      correctionsMade.push(`Aynı anda ${bottoms.length} alt giyim tespit edildi, yalnızca en uygun 1 alt parça seçildi.`);
+      finalItemIds.push(bottoms[0].id); // Keep strictly 1 bottom
+    } else if (bottoms.length === 1) {
+      finalItemIds.push(bottoms[0].id);
+    } else {
+      // Missing bottom! Find best bottom from wardrobe
+      const wardrobeBottoms = allWardrobeItems.filter((i) => i.category === 'bottom' && i.status === 'active');
+      if (wardrobeBottoms.length > 0) {
+        finalItemIds.push(wardrobeBottoms[0].id);
+        correctionsMade.push('Eksik alt parça gardırobunuzdan tamamlandı.');
+      }
+    }
+
+    // Must have at least one top
+    if (tops.length === 0) {
+      const wardrobeTops = allWardrobeItems.filter((i) => i.category === 'top' && i.status === 'active');
+      if (wardrobeTops.length > 0) {
+        finalItemIds.push(wardrobeTops[0].id);
+        correctionsMade.push('Eksik üst giyim gardırobunuzdan tamamlandı.');
+      }
+    } else {
+      // Add all legitimate tops (e.g., inner t-shirt + sweater layering)
+      tops.slice(0, 2).forEach((t) => finalItemIds.push(t.id));
+    }
+  }
+
+  // Outerwear (0 or 1, max 2 for deep winter layering)
+  outerwear.slice(0, 2).forEach((o) => finalItemIds.push(o.id));
+
+  // Shoes: STRICTLY at most 1 pair
+  if (shoes.length > 1) {
+    correctionsMade.push('Birden fazla ayakkabı tek çifte indirildi.');
+    finalItemIds.push(shoes[0].id);
+  } else if (shoes.length === 1) {
+    finalItemIds.push(shoes[0].id);
+  }
+
+  // Bags: at most 1
+  if (bags.length > 0) {
+    finalItemIds.push(bags[0].id);
+  }
+
+  // Accessories: up to 3
+  accessories.slice(0, 3).forEach((a) => finalItemIds.push(a.id));
+
+  // Deduplicate IDs
+  const uniqueIds = Array.from(new Set(finalItemIds));
+
+  return {
+    validItemIds: uniqueIds,
+    isValid: correctionsMade.length === 0,
+    correctionsMade,
+  };
 }
 
 export function generateLocalOutfits(
@@ -65,7 +162,7 @@ export function generateLocalOutfits(
 
   const outfits: Outfit[] = [];
 
-  // Helper score to sort items according to preferences
+  // Scoring function
   const scoreItem = (item: ClothingItem): number => {
     let score = 0;
     if (params.includeFavorites && item.isFavorite) score += 5;
@@ -83,125 +180,179 @@ export function generateLocalOutfits(
   const sortedBags = [...bags].sort((a, b) => scoreItem(b) - scoreItem(a));
   const sortedAccessories = [...accessories].sort((a, b) => scoreItem(b) - scoreItem(a));
 
-  // Option 1: Top + Bottom + Shoes (+ Outerwear/Bag if available)
-  if (sortedTops.length > 0 && sortedBottoms.length > 0) {
-    const top = sortedTops[0];
-    // Find compatible bottom
-    const bottom =
-      sortedBottoms.find((b) => areColorsHarmonious(top.primaryColor, b.primaryColor)) ||
-      sortedBottoms[0];
-    const shoe = sortedShoes[0];
-    const jacket =
-      params.temperature && params.temperature < 20 && sortedOuterwear.length > 0
-        ? sortedOuterwear[0]
-        : undefined;
-    const bag = sortedBags[0];
+  // Determine subcategory layer types
+  const isInnerTop = (t: ClothingItem) => {
+    const sub = (t.subcategory || '').toLowerCase();
+    return sub.includes('tişört') || sub.includes('t-shirt') || sub.includes('gömlek') || sub.includes('bluz') || sub.includes('atlet');
+  };
+  const isMidTop = (t: ClothingItem) => {
+    const sub = (t.subcategory || '').toLowerCase();
+    return sub.includes('kazak') || sub.includes('triko') || sub.includes('sweatshirt') || sub.includes('hırka') || sub.includes('süveter');
+  };
 
-    const selectedIds = [top.id, bottom.id];
-    if (jacket) selectedIds.push(jacket.id);
-    if (shoe) selectedIds.push(shoe.id);
-    if (bag) selectedIds.push(bag.id);
+  const innerTops = sortedTops.filter(isInnerTop);
+  const midTops = sortedTops.filter(isMidTop);
+
+  const layeringMode = params.layeringPreference || (
+    params.temperature !== undefined && params.temperature < 16 ? 'rich' : 'balanced'
+  );
+
+  // COMBINATION 1: Primary Layered Look (5 to 7 pieces when rich, 4 to 5 when balanced)
+  if (sortedTops.length > 0 && sortedBottoms.length > 0) {
+    const selectedIds: string[] = [];
+
+    // Layer 1: Inner top (T-shirt / shirt)
+    const baseTop = innerTops[0] || sortedTops[0];
+    selectedIds.push(baseTop.id);
+
+    // Layer 2: Mid top (Sweater / Knitwear) if rich layering or cold
+    if (layeringMode !== 'minimal') {
+      const secondTop = midTops.find((t) => t.id !== baseTop.id) || (sortedTops.length > 1 && sortedTops[1].id !== baseTop.id ? sortedTops[1] : null);
+      if (secondTop) {
+        selectedIds.push(secondTop.id);
+      }
+    }
+
+    // Layer 3: Outerwear (Jacket / Coat)
+    if (sortedOuterwear.length > 0 && layeringMode !== 'minimal') {
+      selectedIds.push(sortedOuterwear[0].id);
+    }
+
+    // Layer 4: STRICTLY ONE BOTTOM (never 2 bottoms!)
+    const matchingBottom =
+      sortedBottoms.find((b) => areColorsHarmonious(baseTop.primaryColor, b.primaryColor)) ||
+      sortedBottoms[0];
+    selectedIds.push(matchingBottom.id);
+
+    // Layer 5: Shoes (strictly 1 pair)
+    if (sortedShoes.length > 0) {
+      selectedIds.push(sortedShoes[0].id);
+    }
+
+    // Layer 6: Bag (optional based on layering)
+    if (sortedBags.length > 0) {
+      selectedIds.push(sortedBags[0].id);
+    }
+
+    // Layer 7: Accessories (Belt / Scarf / Hat)
+    if (layeringMode === 'rich') {
+      sortedAccessories.slice(0, 2).forEach((acc) => selectedIds.push(acc.id));
+    } else if (sortedAccessories.length > 0) {
+      selectedIds.push(sortedAccessories[0].id);
+    }
+
+    const sanitized = sanitizeAndValidateOutfit(selectedIds, activeItems);
 
     outfits.push({
       id: 'gen_' + Date.now() + '_1',
-      name: `${params.style || 'Şık'} & Dengeli Günlük Seçim`,
-      itemIds: selectedIds,
+      name: `${params.style || 'Şık'} & Katmanlı Şehir Stili`,
+      itemIds: sanitized.validItemIds,
       createdAt: Date.now(),
-      style: params.style || top.style,
+      style: params.style || baseTop.style,
       occasion: params.occasion || 'Günlük Hayat',
-      season: params.season || top.season,
-      description: `${top.name} ile ${bottom.name} arasındaki zamansız birliktelik.${jacket ? ` ${jacket.name} katmanı ile tamamlandı.` : ''}`,
-      colorHarmonyReasoning: `${top.primaryColor} ve ${bottom.primaryColor} renk uyumu dengeli ve göz yormayan bir silüet oluşturur.`,
+      season: params.season || baseTop.season,
+      description: `${baseTop.name} ve ${matchingBottom.name} merkezli, ${sanitized.validItemIds.length} parçalı kusursuz katmanlama.`,
+      colorHarmonyReasoning: `${baseTop.primaryColor} ve ${matchingBottom.primaryColor} tonları tek alt parçayla temiz ve akıcı bir silüet oluşturur.`,
       weatherSuitability: params.weather
-        ? `${params.weather} hava koşulları ve ${params.temperature || 19}°C sıcaklık için ideal katman dengesi.`
-        : 'Mevsimsel geçiş günleri için konforlu.',
-      stylingTips:
-        top.subcategory.toLowerCase().includes('tişört') || top.subcategory.toLowerCase().includes('gömlek')
-          ? 'Üst parçayı alt giyimin içine hafifçe toplayarak bel hattınızı belirginleştirebilirsiniz.'
-          : 'Kolları hafifçe kıvırarak rahat ve havalı bir hava verin.',
+        ? `${params.weather} hava koşulları ve ${params.temperature || 19}°C için ideal katmanlı yapı.`
+        : 'Mevsimsel geçişler için konforlu ve şık.',
+      stylingTips: 'İç parçanın yakasını veya kol ucunu hafifçe göstererek modern katman derinliği kazandırın.',
       isFavorite: false,
       wearCount: 0,
     });
   }
 
-  // Option 2: Dress or Alternative Top + Bottom
+  // COMBINATION 2: Dress OR Clean Smart Look
   if (sortedDresses.length > 0) {
     const dress = sortedDresses[0];
-    const shoe = sortedShoes.length > 1 ? sortedShoes[1] : sortedShoes[0];
-    const jacket = sortedOuterwear.length > 0 ? sortedOuterwear[0] : undefined;
-    const bag = sortedBags.length > 1 ? sortedBags[1] : sortedBags[0];
-
     const selectedIds = [dress.id];
-    if (jacket) selectedIds.push(jacket.id);
-    if (shoe) selectedIds.push(shoe.id);
-    if (bag) selectedIds.push(bag.id);
+
+    if (sortedOuterwear.length > 0) selectedIds.push(sortedOuterwear[0].id);
+    if (sortedShoes.length > 0) selectedIds.push(sortedShoes[0].id);
+    if (sortedBags.length > 0) selectedIds.push(sortedBags[0].id);
+    if (sortedAccessories.length > 0) selectedIds.push(sortedAccessories[0].id);
+
+    const sanitized = sanitizeAndValidateOutfit(selectedIds, activeItems);
 
     outfits.push({
       id: 'gen_' + Date.now() + '_2',
       name: 'Tek Parça Zahmetsiz Zarafet',
-      itemIds: selectedIds,
+      itemIds: sanitized.validItemIds,
       createdAt: Date.now(),
       style: params.style || 'Şık',
       occasion: params.occasion || dress.occasion,
       season: params.season || dress.season,
-      description: `${dress.name} tek başına güçlü bir silüet sunar.${jacket ? ` Üzerine eklenen ${jacket.name} ile modern kontrast yaratıldı.` : ''}`,
-      colorHarmonyReasoning: `${dress.primaryColor} tonunun asaletini tamamlayan minimal tamamlayıcı parçalar.`,
-      weatherSuitability: 'Hafif ve gün boyu hareket kolaylığı sağlayan bütünlük.',
-      stylingTips: 'İnce bir takı veya minimal çanta ile odağı elbisenin formunda tutun.',
+      description: `${dress.name} silüetinin tamamlayıcı aksesuarlarla kusursuz birlikteliği (${sanitized.validItemIds.length} parça).`,
+      colorHarmonyReasoning: `${dress.primaryColor} rengini öne çıkaran zarif tamamlayıcı tonlar.`,
+      weatherSuitability: 'Gün boyu hareket kolaylığı ve konfor.',
+      stylingTips: 'Minimal bir çanta ve uyumlu ayakkabı ile odağı elbisenin formunda tutun.',
       isFavorite: false,
       wearCount: 0,
     });
-  } else if (sortedTops.length > 1 && sortedBottoms.length > 0) {
-    // Alternative second outfit
-    const top2 = sortedTops[1];
-    const bottom2 = sortedBottoms.length > 1 ? sortedBottoms[1] : sortedBottoms[0];
-    const shoe2 = sortedShoes.length > 1 ? sortedShoes[1] : sortedShoes[0];
-    const acc = sortedAccessories[0];
+  } else if (sortedTops.length > 1 && sortedBottoms.length > 1) {
+    // Alternative single top + alternative single bottom (Strictly 1 bottom!)
+    const altTop = sortedTops[1];
+    const altBottom = sortedBottoms[1];
+    const selectedIds = [altTop.id, altBottom.id];
 
-    const selectedIds = [top2.id, bottom2.id];
-    if (shoe2) selectedIds.push(shoe2.id);
-    if (acc) selectedIds.push(acc.id);
+    if (sortedOuterwear.length > 1) selectedIds.push(sortedOuterwear[1].id);
+    else if (sortedOuterwear.length > 0) selectedIds.push(sortedOuterwear[0].id);
+
+    if (sortedShoes.length > 1) selectedIds.push(sortedShoes[1].id);
+    else if (sortedShoes.length > 0) selectedIds.push(sortedShoes[0].id);
+
+    if (sortedBags.length > 0) selectedIds.push(sortedBags[0].id);
+    if (sortedAccessories.length > 0) selectedIds.push(sortedAccessories[0].id);
+
+    const sanitized = sanitizeAndValidateOutfit(selectedIds, activeItems);
 
     outfits.push({
       id: 'gen_' + Date.now() + '_2',
-      name: 'Modern & Kontrast Alternatif',
-      itemIds: selectedIds,
+      name: 'Modern & Kontrast Dinamik Silüet',
+      itemIds: sanitized.validItemIds,
       createdAt: Date.now(),
-      style: top2.style,
+      style: altTop.style,
       occasion: params.occasion || 'Sosyal Etkinlik',
-      season: params.season || top2.season,
-      description: `${top2.name} ile ${bottom2.name} birleşimiyle daha dinamik bir hava.`,
-      colorHarmonyReasoning: `${top2.primaryColor} ve ${bottom2.primaryColor} kontrastı enerjik ve modern bir hava verir.`,
-      weatherSuitability: 'Günlük aktiviteler ve sosyal buluşmalar için pratik.',
-      stylingTips: acc ? `${acc.name} aksesuarı ile kombine odak noktası ekleyin.` : 'Sade ayakkabılarla tamamlayın.',
+      season: params.season || altTop.season,
+      description: `${altTop.name} ile ${altBottom.name} birleşimiyle ${sanitized.validItemIds.length} parçalı taze görünüm.`,
+      colorHarmonyReasoning: `${altTop.primaryColor} ve ${altBottom.primaryColor} renk kontrastı modern bir enerji verir.`,
+      weatherSuitability: 'Sosyal buluşmalar ve şehir aktiviteleri için ideal.',
+      stylingTips: 'Tek renk alt giyimi kontrast ayakkabı veya çanta ile tamamlayın.',
       isFavorite: false,
       wearCount: 0,
     });
   }
 
-  // Option 3: Third combination if enough pieces
-  if (sortedTops.length > 2 && sortedBottoms.length > 0) {
-    const top3 = sortedTops[2];
-    const bottom3 = sortedBottoms[sortedBottoms.length - 1];
-    const shoe3 = sortedShoes[0];
-    const jacket3 = sortedOuterwear.length > 1 ? sortedOuterwear[1] : sortedOuterwear[0];
+  // COMBINATION 3: Casual Weekend / Relaxed Layering
+  if (sortedTops.length > 0 && sortedBottoms.length > 0) {
+    const topPick = sortedTops[sortedTops.length > 2 ? 2 : 0];
+    const bottomPick = sortedBottoms[sortedBottoms.length > 1 ? 1 : 0]; // Strictly ONE bottom!
+    const selectedIds = [topPick.id, bottomPick.id];
 
-    const selectedIds = [top3.id, bottom3.id];
-    if (jacket3) selectedIds.push(jacket3.id);
-    if (shoe3) selectedIds.push(shoe3.id);
+    // Optional inner top if available
+    if (innerTops.length > 0 && innerTops[0].id !== topPick.id) {
+      selectedIds.push(innerTops[0].id);
+    }
+
+    if (sortedOuterwear.length > 0) selectedIds.push(sortedOuterwear[0].id);
+    if (sortedShoes.length > 0) selectedIds.push(sortedShoes[sortedShoes.length - 1].id);
+    if (sortedBags.length > 0) selectedIds.push(sortedBags[sortedBags.length - 1].id);
+    if (sortedAccessories.length > 1) selectedIds.push(sortedAccessories[1].id);
+
+    const sanitized = sanitizeAndValidateOutfit(selectedIds, activeItems);
 
     outfits.push({
       id: 'gen_' + Date.now() + '_3',
-      name: 'Rahat Hafta Sonu Silüeti',
-      itemIds: selectedIds,
+      name: 'Konforlu & Zahmetsiz Hafta Sonu Stili',
+      itemIds: sanitized.validItemIds,
       createdAt: Date.now(),
       style: 'Casual',
       occasion: 'Günlük Hayat',
       season: params.season || 'Dört Mevsim',
-      description: `${top3.name} ve ${bottom3.name} ile maksimum konfor ve stil.`,
-      colorHarmonyReasoning: 'Doğal toprak ve nötr tonların dingin birleşimi.',
-      weatherSuitability: 'Değişken hava koşullarında katmanlı kullanım sağlar.',
-      stylingTips: 'Sneaker veya rahat botlarla tamamlayarak adımlarınızı özgürleştirin.',
+      description: `${topPick.name} ve ${bottomPick.name} ile ${sanitized.validItemIds.length} parçalı rahat ve stil sahibi silüet.`,
+      colorHarmonyReasoning: 'Dingin toprak ve nötr tonların göz yormayan dengesi.',
+      weatherSuitability: 'Günlük konfor ve rahat adımlar için ideal.',
+      stylingTips: 'Kolları hafifçe kıvırarak rahat ve dinamik bir hava yakalayın.',
       isFavorite: false,
       wearCount: 0,
     });
@@ -211,8 +362,8 @@ export function generateLocalOutfits(
     outfits,
     generalAdvice:
       outfits.length > 0
-        ? 'Gardırobunuzdaki parçalarla hazırlanan kombinler, mevcut kıyafetlerinizi farklı şekillerde değerlendirmeniz için tasarlandı.'
-        : 'Kombin oluşturmak için dolabınıza daha fazla temel parça (özellikle üst, alt ve ayakkabı) ekleyin.',
+        ? 'Kombinleriniz tek alt giyim kuralına ve istediğiniz katman zenginliğine göre özenle eşleştirildi.'
+        : 'Kombin oluşturmak için dolabınıza temel üst, alt ve ayakkabı ekleyin.',
     missingCategories,
     isLocalFallback: true,
   };

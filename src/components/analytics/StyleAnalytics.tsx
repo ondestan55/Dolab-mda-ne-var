@@ -72,26 +72,7 @@ export const StyleAnalytics: React.FC<StyleAnalyticsProps> = ({
       seasonCounts[item.season] = (seasonCounts[item.season] || 0) + 1;
     }
 
-    // Cost Per Wear (only for items with purchase price)
-    const itemsWithPrice = items.filter((i) => i.purchasePrice && i.purchasePrice > 0);
-    const totalSpent = itemsWithPrice.reduce((sum, i) => sum + (i.purchasePrice || 0), 0);
-    const totalWearsOnPricedItems = itemsWithPrice.reduce((sum, i) => sum + (i.wearCount || 0), 0);
-    const avgCostPerWear =
-      totalWearsOnPricedItems > 0
-        ? Math.round(totalSpent / totalWearsOnPricedItems)
-        : null;
-
-    // Top cost efficiency champion
-    const topValueItems = itemsWithPrice
-      .filter((i) => i.wearCount > 0)
-      .map((i) => ({
-        ...i,
-        cpw: Math.round((i.purchasePrice || 0) / i.wearCount),
-      }))
-      .sort((a, b) => a.cpw - b.cpw)
-      .slice(0, 3);
-
-    // Duplicate detection (similar subcategory + color, e.g. multiple white tees)
+    // Versatility Index: items that have been matched in outfits
     const duplicateClusters: { key: string; count: number; sampleItems: ClothingItem[] }[] = [];
     const groupKeyMap: Record<string, ClothingItem[]> = {};
 
@@ -119,10 +100,6 @@ export const StyleAnalytics: React.FC<StyleAnalyticsProps> = ({
       categoryCounts,
       colorCounts,
       seasonCounts,
-      itemsWithPriceCount: itemsWithPrice.length,
-      totalSpent,
-      avgCostPerWear,
-      topValueItems,
       duplicateClusters,
     };
   }, [items]);

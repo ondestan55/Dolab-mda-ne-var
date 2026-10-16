@@ -43,7 +43,7 @@ export const WardrobeGrid: React.FC<WardrobeGridProps> = ({
   const [selectedStyle, setSelectedStyle] = useState<StyleType | 'all'>('all');
   const [onlyFavorites, setOnlyFavorites] = useState(false);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'laundry'>('all');
-  const [sortBy, setSortBy] = useState<'newest' | 'most_worn' | 'least_worn' | 'name' | 'price'>(
+  const [sortBy, setSortBy] = useState<'newest' | 'most_worn' | 'least_worn' | 'name'>(
     'newest'
   );
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -59,7 +59,6 @@ export const WardrobeGrid: React.FC<WardrobeGridProps> = ({
           const matches =
             item.name.toLowerCase().includes(q) ||
             item.subcategory.toLowerCase().includes(q) ||
-            (item.brand && item.brand.toLowerCase().includes(q)) ||
             item.primaryColor.toLowerCase().includes(q) ||
             item.style.toLowerCase().includes(q) ||
             (item.notes && item.notes.toLowerCase().includes(q));
@@ -102,7 +101,6 @@ export const WardrobeGrid: React.FC<WardrobeGridProps> = ({
         if (sortBy === 'most_worn') return (b.wearCount || 0) - (a.wearCount || 0);
         if (sortBy === 'least_worn') return (a.wearCount || 0) - (b.wearCount || 0);
         if (sortBy === 'name') return a.name.localeCompare(b.name, 'tr');
-        if (sortBy === 'price') return (b.purchasePrice || 0) - (a.purchasePrice || 0);
         return 0;
       });
   }, [
@@ -223,7 +221,6 @@ export const WardrobeGrid: React.FC<WardrobeGridProps> = ({
               <option value="most_worn">En Çok Giyilenler</option>
               <option value="least_worn">En Az Giyilenler</option>
               <option value="name">İsim (A-Z)</option>
-              <option value="price">Fiyat (Yüksek-Düşük)</option>
             </select>
 
             {/* Advanced Filters Toggle */}
@@ -436,11 +433,6 @@ export const WardrobeGrid: React.FC<WardrobeGridProps> = ({
                     <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-[#EAE2D5] text-[#5C5248]">
                       {CATEGORY_LABELS[item.category] || item.category}
                     </span>
-                    {item.brand && (
-                      <span className="text-xs text-[#8C7A6B] font-medium">
-                        {item.brand}
-                      </span>
-                    )}
                   </div>
                   <h4 className="font-serif-editorial text-base sm:text-lg font-bold text-[#1C1917] mt-0.5">
                     {item.name}
@@ -456,11 +448,6 @@ export const WardrobeGrid: React.FC<WardrobeGridProps> = ({
                   <span className="text-xs font-semibold text-[#1C1917] block">
                     {item.wearCount} kez giyildi
                   </span>
-                  {item.purchasePrice && (
-                    <span className="text-[11px] text-[#8C7A6B]">
-                      {item.purchasePrice.toLocaleString('tr-TR')} TL
-                    </span>
-                  )}
                 </div>
 
                 <button
