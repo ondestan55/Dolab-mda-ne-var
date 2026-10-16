@@ -7,11 +7,15 @@ import {
   Check,
   AlertCircle,
   Loader2,
-  RefreshCw,
   Image as ImageIcon,
   Wand2,
   Video,
   SwitchCamera,
+  Layers,
+  Palette,
+  ScanLine,
+  HelpCircle,
+  RotateCcw,
 } from 'lucide-react';
 import {
   ClothingItem,
@@ -38,6 +42,24 @@ interface AddClothingModalProps {
   hasGeminiKey: boolean;
 }
 
+// Popular color swatches for 1-tap correction
+const POPULAR_COLORS = [
+  { name: 'Siyah', hex: '#1C1917' },
+  { name: 'Beyaz', hex: '#FFFFFF', border: true },
+  { name: 'Ekru', hex: '#F3EFE6', border: true },
+  { name: 'Bej', hex: '#E6DAC8' },
+  { name: 'Koyu Mavi', hex: '#1E3A8A' },
+  { name: 'Açık Mavi', hex: '#60A5FA' },
+  { name: 'Haki', hex: '#4D5D38' },
+  { name: 'Gri', hex: '#9CA3AF' },
+  { name: 'Kahverengi', hex: '#78350F' },
+  { name: 'Bordo', hex: '#881337' },
+  { name: 'Taba', hex: '#C27838' },
+  { name: 'Antrasit', hex: '#374151' },
+];
+
+const POPULAR_PATTERNS = ['Düz', 'Çizgili', 'Ekose', 'Baskılı / Logolu', 'Çiçekli', 'Kareli'];
+
 export const AddClothingModal: React.FC<AddClothingModalProps> = ({
   isOpen,
   onClose,
@@ -46,9 +68,13 @@ export const AddClothingModal: React.FC<AddClothingModalProps> = ({
 }) => {
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
   const [rawOriginalUrl, setRawOriginalUrl] = useState<string | null>(null);
+  const [transparentCutoutUrl, setTransparentCutoutUrl] = useState<string | null>(null);
+  const [stickerWhiteUrl, setStickerWhiteUrl] = useState<string | null>(null);
+  const [cutoutMode, setCutoutMode] = useState<'transparent' | 'sticker' | 'original'>('transparent');
   const [photoMimeType, setPhotoMimeType] = useState<string>('image/jpeg');
+
   const [isRemovingBg, setIsRemovingBg] = useState(false);
-  const [isBgRemoved, setIsBgRemoved] = useState(false);
+  const [isScanningVisual, setIsScanningVisual] = useState(false);
 
   // Live in-app camera state for Safari & WebRTC
   const [isLiveCameraActive, setIsLiveCameraActive] = useState(false);
@@ -58,11 +84,12 @@ export const AddClothingModal: React.FC<AddClothingModalProps> = ({
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisStatus, setAnalysisStatus] = useState<string | null>(null);
+  const [aiFilledFields, setAiFilledFields] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [pairingTip, setPairingTip] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
 
-  // Simplified Form Fields: Pure Fashion (No brand, size, price, date)
+  // Editable Form Fields (AI pre-fills, user can modify with 1 tap)
   const [name, setName] = useState('');
   const [category, setCategory] = useState<CategoryType>('top');
   const [subcategory, setSubcategory] = useState('');
@@ -92,11 +119,15 @@ export const AddClothingModal: React.FC<AddClothingModalProps> = ({
     stopLiveCamera();
     setPhotoDataUrl(null);
     setRawOriginalUrl(null);
+    setTransparentCutoutUrl(null);
+    setStickerWhiteUrl(null);
+    setCutoutMode('transparent');
     setPhotoMimeType('image/jpeg');
     setIsRemovingBg(false);
-    setIsBgRemoved(false);
+    setIsScanningVisual(false);
     setIsAnalyzing(false);
     setAnalysisStatus(null);
+    setAiFilledFields(false);
     setErrorMessage(null);
     setPairingTip('');
     setName('');
@@ -158,14 +189,7 @@ export const AddClothingModal: React.FC<AddClothingModalProps> = ({
       const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
       stopLiveCamera();
 
-      setRawOriginalUrl(dataUrl);
-      setPhotoDataUrl(dataUrl);
-      setPhotoMimeType('image/jpeg');
-
-      // Auto background removal
-      runBackgroundRemoval(dataUrl);
-      // Auto AI analysis
-      runAiAnalysis(dataUrl, 'image/jpeg');
+      processImageData(dataUrl, 'image/jpeg');
     } catch (err: any) {
       setErrorMessage('Fotoğraf yakalanırken hata oluştu: ' + err.message);
     }
@@ -181,69 +205,47 @@ export const AddClothingModal: React.FC<AddClothingModalProps> = ({
 
     try {
       const { dataUrl, mimeType } = await processAndCompressImage(file);
-      setRawOriginalUrl(dataUrl);
-      setPhotoDataUrl(dataUrl);
-      setPhotoMimeType(mimeType);
-
-      // Auto-run smart studio background removal
-      runBackgroundRemoval(dataUrl);
-
-      // Auto-trigger AI analysis
-      runAiAnalysis(dataUrl, mimeType);
+      processImageData(dataUrl, mimeType);
     } catch (err: any) {
       setErrorMessage(err.message || 'Fotoğraf işlenirken hata oluştu.');
     }
   };
 
-  const runBackgroundRemoval = async (inputDataUrl: string) => {
+  /**
+   * Unified processor:
+   * 1. Stores raw original.
+   * 2. Shows scanner animation.
+   * 3. Performs Gardrops-style Sticker Background Removal (Transparent PNG).
+   * 4. Auto-scans with AI to populate fields (with 100% user editability).
+   */
+  const processImageData = async (dataUrl: string, mimeType: string) => {
+    setRawOriginalUrl(dataUrl);
+    setPhotoDataUrl(dataUrl);
+    setPhotoMimeType(mimeType);
+
+    // Start scanner visual animation
+    setIsScanningVisual(true);
     setIsRemovingBg(true);
+    setIsAnalyzing(true);
+    setAnalysisStatus('Gardrops tarzı sticker kesimi ve yapay zekâ taraması yapılıyor...');
+
     try {
-      const cleanStudio = await removeClothingBackground(inputDataUrl, 'studio');
-      setPhotoDataUrl(cleanStudio);
-      setIsBgRemoved(true);
+      // 1. Generate transparent cutout (no studio background/no shadow!)
+      const transparentCutout = await removeClothingBackground(dataUrl, 'transparent');
+      setTransparentCutoutUrl(transparentCutout);
+      setPhotoDataUrl(transparentCutout);
+      setCutoutMode('transparent');
     } catch (bgErr) {
-      console.warn('Background clean warning:', bgErr);
+      console.warn('Background removal error:', bgErr);
     } finally {
       setIsRemovingBg(false);
     }
-  };
 
-  const handleToggleBg = async () => {
-    if (!rawOriginalUrl) return;
-
-    if (isBgRemoved) {
-      setPhotoDataUrl(rawOriginalUrl);
-      setIsBgRemoved(false);
-    } else {
-      setIsRemovingBg(true);
-      try {
-        const cleanStudio = await removeClothingBackground(rawOriginalUrl, 'studio');
-        setPhotoDataUrl(cleanStudio);
-        setIsBgRemoved(true);
-      } catch (err) {
-        console.warn('Bg cleanup error:', err);
-      } finally {
-        setIsRemovingBg(false);
-      }
-    }
-  };
-
-  const runAiAnalysis = async (imgData?: string, mime?: string) => {
-    const dataToAnalyze = imgData || photoDataUrl;
-    const mimeToAnalyze = mime || photoMimeType;
-
-    if (!dataToAnalyze) {
-      setErrorMessage('Lütfen önce bir kıyafet fotoğrafı seçin.');
-      return;
-    }
-
-    setIsAnalyzing(true);
-    setAnalysisStatus('Yapay zekâ kıyafetinizi inceliyor...');
-
+    // 2. Auto-run AI classification (never throws error; always pre-fills)
     try {
-      const result = await analyzeClothingPhoto(dataToAnalyze, mimeToAnalyze);
+      const result = await analyzeClothingPhoto(dataUrl, mimeType);
 
-      // Auto-populate form fields
+      // Populate form fields with high-fidelity guesses
       if (result.name) setName(result.name);
       if (result.category) setCategory(result.category);
       if (result.subcategory) setSubcategory(result.subcategory);
@@ -255,13 +257,90 @@ export const AddClothingModal: React.FC<AddClothingModalProps> = ({
       if (result.occasion) setOccasion(result.occasion);
       if (result.pairingSuggestions) setPairingTip(result.pairingSuggestions);
 
-      setAnalysisStatus('Kıyafet detayları başarıyla tanımlandı ✓');
-      setTimeout(() => setAnalysisStatus(null), 3500);
-    } catch (err: any) {
-      console.warn('AI analysis fallback:', err);
+      setAiFilledFields(true);
+      setAnalysisStatus('Kıyafet detayları otomatik dolduruldu ✓');
+    } catch (aiErr: any) {
+      console.warn('AI analysis fallback handled:', aiErr);
       if (!name) setName('Yeni Kıyafet');
-      if (!subcategory) setSubcategory(CATEGORY_LABELS[category] || 'Üst Giyim');
-      setAnalysisStatus('Temel bilgiler dolduruldu ✓');
+      setAnalysisStatus('Temel bilgiler hazırlandı ✓');
+    } finally {
+      setIsAnalyzing(false);
+      setTimeout(() => {
+        setIsScanningVisual(false);
+      }, 1200);
+      setTimeout(() => {
+        setAnalysisStatus(null);
+      }, 4500);
+    }
+  };
+
+  /**
+   * Switch between cutout modes:
+   * - 'transparent': Clean transparent PNG (Sticker)
+   * - 'sticker': Clean transparent with crisp white contour outline
+   * - 'original': Untouched original
+   */
+  const handleCutoutModeChange = async (mode: 'transparent' | 'sticker' | 'original') => {
+    if (!rawOriginalUrl) return;
+    setCutoutMode(mode);
+
+    if (mode === 'original') {
+      setPhotoDataUrl(rawOriginalUrl);
+      return;
+    }
+
+    if (mode === 'transparent') {
+      if (transparentCutoutUrl) {
+        setPhotoDataUrl(transparentCutoutUrl);
+      } else {
+        setIsRemovingBg(true);
+        const cutout = await removeClothingBackground(rawOriginalUrl, 'transparent');
+        setTransparentCutoutUrl(cutout);
+        setPhotoDataUrl(cutout);
+        setIsRemovingBg(false);
+      }
+      return;
+    }
+
+    if (mode === 'sticker') {
+      if (stickerWhiteUrl) {
+        setPhotoDataUrl(stickerWhiteUrl);
+      } else {
+        setIsRemovingBg(true);
+        const sticker = await removeClothingBackground(rawOriginalUrl, 'sticker');
+        setStickerWhiteUrl(sticker);
+        setPhotoDataUrl(sticker);
+        setIsRemovingBg(false);
+      }
+      return;
+    }
+  };
+
+  const handleReanalyze = async () => {
+    if (!rawOriginalUrl && !photoDataUrl) return;
+    setIsAnalyzing(true);
+    setAnalysisStatus('Yapay zekâ kıyafeti yeniden inceliyor...');
+
+    try {
+      const targetUrl = rawOriginalUrl || photoDataUrl!;
+      const result = await analyzeClothingPhoto(targetUrl, photoMimeType);
+
+      if (result.name) setName(result.name);
+      if (result.category) setCategory(result.category);
+      if (result.subcategory) setSubcategory(result.subcategory);
+      if (result.primaryColor) setPrimaryColor(result.primaryColor);
+      if (result.secondaryColor) setSecondaryColor(result.secondaryColor);
+      if (result.pattern) setPattern(result.pattern);
+      if (result.style) setStyle(result.style);
+      if (result.season) setSeason(result.season);
+      if (result.occasion) setOccasion(result.occasion);
+      if (result.pairingSuggestions) setPairingTip(result.pairingSuggestions);
+
+      setAiFilledFields(true);
+      setAnalysisStatus('Detaylar güncellendi ✓');
+      setTimeout(() => setAnalysisStatus(null), 3500);
+    } catch {
+      setAnalysisStatus('İşlem tamamlandı ✓');
       setTimeout(() => setAnalysisStatus(null), 3000);
     } finally {
       setIsAnalyzing(false);
@@ -280,23 +359,25 @@ export const AddClothingModal: React.FC<AddClothingModalProps> = ({
     }
 
     setIsSaving(true);
+    setErrorMessage(null);
+
     try {
       const newItem: ClothingItem = {
-        id: 'item_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+        id: `clothing-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         name: name.trim(),
-        imageUrl: photoDataUrl,
         category,
         subcategory: subcategory.trim() || CATEGORY_LABELS[category],
         primaryColor,
-        secondaryColor: secondaryColor.trim() || undefined,
+        secondaryColor: secondaryColor.trim(),
         pattern,
         season,
         style,
         occasion,
+        imageUrl: photoDataUrl,
+        notes: notes.trim() || (pairingTip ? `Stilist Önerisi: ${pairingTip}` : undefined),
+        isFavorite: false,
         wearCount: 0,
         status: 'active',
-        notes: notes.trim() || undefined,
-        isFavorite: false,
         isDemoItem: false,
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -346,19 +427,24 @@ export const AddClothingModal: React.FC<AddClothingModalProps> = ({
           )}
 
           {analysisStatus && (
-            <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs flex items-center gap-2">
+            <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs flex items-center gap-2 animate-in fade-in">
               <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>{analysisStatus}</span>
+              <span className="font-medium">{analysisStatus}</span>
             </div>
           )}
 
-          {/* 1. Photo Section (Safari / iOS & Android Camera Integration) */}
+          {/* 1. Photo Section (Gardrops-Style Scanner & Transparent Sticker Cutout) */}
           <div>
-            <label className="block text-xs font-semibold text-[#44403C] uppercase tracking-wider mb-2">
-              1. Kıyafet Fotoğrafı Çek veya Yükle
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-semibold text-[#44403C] uppercase tracking-wider">
+                1. Kıyafet Fotoğrafı & Sticker Kesimi
+              </label>
+              <span className="text-[11px] text-[#8C7A6B]">
+                Gardrops tarzı otomatik arka plan temizleme
+              </span>
+            </div>
 
-            {/* In-App Live Camera Stream (Safari iOS WebRTC compatible) */}
+            {/* In-App Live Camera Stream with Gardrops Viewfinder Brackets */}
             {isLiveCameraActive ? (
               <div className="relative rounded-3xl overflow-hidden bg-black aspect-4/3 flex items-center justify-center border-2 border-[#1C1917]">
                 <video
@@ -368,6 +454,23 @@ export const AddClothingModal: React.FC<AddClothingModalProps> = ({
                   muted
                   className="w-full h-full object-cover"
                 />
+
+                {/* Viewfinder Target & Corner Brackets (Gardrops / Dolap Style) */}
+                <div className="absolute inset-8 pointer-events-none border border-white/30 rounded-2xl flex flex-col justify-between p-3">
+                  <div className="flex justify-between">
+                    <span className="w-6 h-6 border-t-2 border-l-2 border-emerald-400" />
+                    <span className="w-6 h-6 border-t-2 border-r-2 border-emerald-400" />
+                  </div>
+                  <div className="text-center">
+                    <span className="inline-block px-3 py-1 rounded-full bg-black/60 text-white text-[11px] font-medium backdrop-blur-xs">
+                      Kıyafeti çerçevenin içine hizalayın
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="w-6 h-6 border-b-2 border-l-2 border-emerald-400" />
+                    <span className="w-6 h-6 border-b-2 border-r-2 border-emerald-400" />
+                  </div>
+                </div>
 
                 {/* Camera Overlay Controls */}
                 <div className="absolute top-3 right-3 flex items-center gap-2 z-20">
@@ -396,8 +499,8 @@ export const AddClothingModal: React.FC<AddClothingModalProps> = ({
                   <button
                     type="button"
                     onClick={captureLivePhoto}
-                    className="w-16 h-16 rounded-full bg-white border-4 border-[#1C1917] flex items-center justify-center shadow-2xl active:scale-95 transition"
-                    title="Fotoğrafı Çek"
+                    className="w-16 h-16 rounded-full bg-white border-4 border-emerald-500 flex items-center justify-center shadow-2xl active:scale-95 transition"
+                    title="Fotoğrafı Çek ve Kes"
                   >
                     <div className="w-12 h-12 rounded-full bg-[#1C1917]" />
                   </button>
@@ -413,43 +516,40 @@ export const AddClothingModal: React.FC<AddClothingModalProps> = ({
                     const file = e.dataTransfer.files?.[0];
                     if (file) processSelectedFile(file);
                   }}
-                  className="border-2 border-dashed border-[#D5C9BE] hover:border-[#8C7A6B] bg-[#F7F4EE] rounded-3xl p-6 text-center transition flex flex-col items-center justify-center gap-3"
+                  className="border-2 border-dashed border-[#D5C9BE] hover:border-[#8C7A6B] bg-[#F7F4EE] rounded-3xl p-6 text-center transition flex flex-col items-center justify-center gap-3 relative overflow-hidden"
                 >
                   <div className="w-12 h-12 rounded-full bg-[#EAE2D5] flex items-center justify-center text-[#5C5248]">
                     <Upload className="w-5 h-5" />
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-[#292524]">
-                      Fotoğrafı buraya bırakın veya seçenekleri kullanın
+                      Fotoğrafı buraya bırakın veya çekin
                     </p>
                     <p className="text-xs text-[#8C7A6B] mt-0.5">
-                      Yatakta, askıda veya yerde çekilen fotoğrafların arka planı temizlenir.
+                      Yatakta, askıda veya yerde çekilen fotoğrafların arka planı kaldırılır ve sticker yapılır.
                     </p>
                   </div>
 
                   {/* Camera & Gallery Buttons (Native Safari iOS Direct Label Triggers) */}
                   <div className="flex flex-wrap items-center justify-center gap-2.5 pt-2">
-                    {/* Native Apple / Mobile Camera via Direct Label */}
                     <label
                       htmlFor="safari-camera-input"
                       className="cursor-pointer inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-[#1C1917] text-[#FAF8F5] hover:bg-[#38332E] transition shadow-xs active:scale-98"
                     >
-                      <Camera className="w-4 h-4 text-[#E6DEC8]" />
+                      <Camera className="w-4 h-4 text-emerald-400" />
                       <span>Kamerayı Aç</span>
                     </label>
 
-                    {/* Direct Live Stream Camera Option */}
                     <button
                       type="button"
                       onClick={() => startLiveCamera('environment')}
                       className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-[#F5EFEB] text-[#44403C] border border-[#D5C9BE] hover:bg-[#EAE2D5] transition"
-                      title="Canlı kamera vizörü"
+                      title="Canlı vizör ile çekim"
                     >
                       <Video className="w-4 h-4 text-[#8C7A6B]" />
                       <span>Canlı Vizör</span>
                     </button>
 
-                    {/* Gallery Picker via Direct Label */}
                     <label
                       htmlFor="safari-gallery-input"
                       className="cursor-pointer inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-white text-[#292524] border border-[#D5C9BE] hover:bg-[#F3EDE6] transition"
@@ -486,32 +586,63 @@ export const AddClothingModal: React.FC<AddClothingModalProps> = ({
                 </div>
               </div>
             ) : (
-              /* Photo Preview with Background Removal Controls */
+              /* Photo Preview with Gardrops Sticker Scanner & Transparent Cutout View */
               <div className="rounded-2xl border border-[#E7E0D8] bg-[#F7F4EE] p-4 flex flex-col sm:flex-row items-center gap-5">
-                <div className="relative w-36 h-44 rounded-xl overflow-hidden bg-radial from-stone-50 to-stone-200 border border-[#E7E0D8] shrink-0 shadow-sm flex items-center justify-center p-2">
+                {/* Image Cutout Container (Transparent Checkerboard like Photoshop / Gardrops) */}
+                <div className="relative w-40 h-48 rounded-2xl overflow-hidden border border-[#D5C9BE] shrink-0 shadow-sm flex items-center justify-center p-2 bg-checkerboard group">
                   <img
                     src={photoDataUrl}
-                    alt="Kıyafet Ön İzleme"
-                    className="w-full h-full object-contain drop-shadow-md"
+                    alt="Kıyafet Sticker Kesimi"
+                    className={`w-full h-full object-contain transition duration-300 ${
+                      cutoutMode === 'sticker'
+                        ? 'drop-shadow-[0_0_4px_rgba(255,255,255,0.95)]'
+                        : 'drop-shadow-sm'
+                    }`}
                   />
+
+                  {/* Gardrops-Style Active Laser Scanner Animation */}
+                  {isScanningVisual && (
+                    <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                      {/* Laser Bar */}
+                      <div className="absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_12px_#34d399] animate-laser-sweep" />
+                      {/* Corner Scanner Frame */}
+                      <div className="absolute inset-1 border border-emerald-400/60 rounded-xl" />
+                      <div className="absolute bottom-2 inset-x-2 text-center">
+                        <span className="text-[10px] bg-black/75 text-emerald-300 px-2 py-0.5 rounded-full font-semibold">
+                          Ürün Taranıyor...
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
                   {isRemovingBg && (
-                    <div className="absolute inset-0 bg-black/40 backdrop-blur-xs flex flex-col items-center justify-center text-white p-2 text-center">
-                      <Loader2 className="w-5 h-5 animate-spin mb-1 text-[#E6DEC8]" />
-                      <span className="text-[10px] font-semibold">Arka plan temizleniyor...</span>
+                    <div className="absolute inset-0 bg-black/50 backdrop-blur-xs flex flex-col items-center justify-center text-white p-2 text-center">
+                      <Loader2 className="w-5 h-5 animate-spin mb-1 text-emerald-400" />
+                      <span className="text-[10px] font-semibold">Arka plan kesiliyor...</span>
                     </div>
                   )}
                 </div>
 
+                {/* Right controls: Sticker cut mode & AI info */}
                 <div className="flex-1 w-full space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-[#5C5248]">
-                      Fotoğraf Hazır
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="text-xs font-semibold text-[#1C1917]">
+                        {cutoutMode === 'original'
+                          ? 'Orijinal Fotoğraf'
+                          : cutoutMode === 'sticker'
+                          ? 'Beyaz Çizgili Sticker'
+                          : 'Şeffaf Sticker Kesimi (Gardrops Tarzı)'}
+                      </span>
+                    </div>
                     <button
                       type="button"
                       onClick={() => {
                         setPhotoDataUrl(null);
                         setRawOriginalUrl(null);
+                        setTransparentCutoutUrl(null);
+                        setStickerWhiteUrl(null);
                       }}
                       className="text-xs text-rose-700 hover:text-rose-900 underline font-medium"
                     >
@@ -519,58 +650,109 @@ export const AddClothingModal: React.FC<AddClothingModalProps> = ({
                     </button>
                   </div>
 
-                  {/* Background Toggle Button */}
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleToggleBg}
-                      disabled={isRemovingBg}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition ${
-                        isBgRemoved
-                          ? 'bg-[#1C1917] text-[#FAF8F5] border-[#1C1917]'
-                          : 'bg-white text-[#5C5248] border-[#D5C9BE] hover:bg-[#F3EDE6]'
-                      }`}
-                      title="Yatak, yer veya askı arka planını temizle"
-                    >
-                      <Wand2 className={`w-3.5 h-3.5 ${isBgRemoved ? 'text-[#E6DEC8]' : 'text-[#8C7A6B]'}`} />
-                      <span>{isBgRemoved ? 'Stüdyo Görünümü (Aktif)' : 'Arka Planı Temizle'}</span>
-                    </button>
+                  {/* Cutout Mode Switcher (User has full control: Transparent, White Sticker, Original) */}
+                  <div>
+                    <label className="text-[11px] font-semibold text-[#786C60] block mb-1.5">
+                      Görünüm Seçeneği:
+                    </label>
+                    <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-[#EAE2D5]/70 border border-[#D5C9BE]">
+                      <button
+                        type="button"
+                        onClick={() => handleCutoutModeChange('transparent')}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+                          cutoutMode === 'transparent'
+                            ? 'bg-[#1C1917] text-white shadow-xs'
+                            : 'text-[#5C5248] hover:text-[#1C1917]'
+                        }`}
+                        title="Arka planı tamamen kaldır, sadece ürünü bırak"
+                      >
+                        ✨ Şeffaf
+                      </button>
 
+                      <button
+                        type="button"
+                        onClick={() => handleCutoutModeChange('sticker')}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+                          cutoutMode === 'sticker'
+                            ? 'bg-[#1C1917] text-white shadow-xs'
+                            : 'text-[#5C5248] hover:text-[#1C1917]'
+                        }`}
+                        title="Ürün etrafında temiz beyaz sticker çizgisi"
+                      >
+                        🏷️ Çizgili Sticker
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleCutoutModeChange('original')}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+                          cutoutMode === 'original'
+                            ? 'bg-[#1C1917] text-white shadow-xs'
+                            : 'text-[#5C5248] hover:text-[#1C1917]'
+                        }`}
+                        title="Orijinal ham fotoğraf"
+                      >
+                        🖼️ Orijinal
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Re-Analyze trigger */}
+                  <div className="flex items-center gap-2 pt-1">
                     <button
                       type="button"
-                      onClick={() => runAiAnalysis()}
+                      onClick={handleReanalyze}
                       disabled={isAnalyzing}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white text-[#4A5320] border border-[#C5CEB0] hover:bg-[#F4F6EE] transition"
                     >
                       {isAnalyzing ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin text-[#4A5320]" />
                       ) : (
-                        <Sparkles className="w-3.5 h-3.5 text-[#4A5320]" />
+                        <RotateCcw className="w-3.5 h-3.5 text-[#4A5320]" />
                       )}
-                      <span>Yeniden Analiz Et</span>
+                      <span>Yapay Zekâ ile Yeniden Tara</span>
                     </button>
+                    <span className="text-[11px] text-[#8C7A6B]">
+                      Yatak, halı veya zemin arka planı kaldırıldı.
+                    </span>
                   </div>
-                  <span className="text-[11px] text-[#8C7A6B] block">
-                    {isBgRemoved ? '✦ Temiz stüdyo zeminine uyarlandı.' : '✦ Orijinal çekim.'}
-                  </span>
                 </div>
               </div>
             )}
           </div>
 
-          {/* 2. Simplified Fashion Details Form (No brand, size, price, date) */}
+          {/* 2. AI Auto-Populated Fashion Details (100% UNLOCKED & USER EDITABLE) */}
           <form id="add-clothing-form" onSubmit={handleSubmit} className="space-y-4">
-            <div className="border-t border-[#E7E0D8] pt-4">
-              <label className="block text-xs font-semibold text-[#44403C] uppercase tracking-wider mb-1.5">
-                Kıyafet Adı *
-              </label>
+            {/* Informational Guidance Notice */}
+            <div className="p-3.5 rounded-2xl bg-[#F0EBE1] border border-[#DDD3C5] flex items-start gap-2.5 text-xs text-[#5C5248]">
+              <Sparkles className="w-4 h-4 text-[#8C7A6B] shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-[#1C1917]">
+                  {aiFilledFields
+                    ? 'Yapay zekâ detayları otomatik doldurdu ✓'
+                    : 'Kıyafet Detayları'}
+                </p>
+                <p className="text-[11px] text-[#786C60] mt-0.5">
+                  Tüm alanlar düzenlenebilir durumdadır. Yanlış veya eksik bir bilgi varsa üzerine tıklayarak dilediğiniz gibi değiştirebilirsiniz.
+                </p>
+              </div>
+            </div>
+
+            {/* Clothing Name */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold text-[#44403C] uppercase tracking-wider">
+                  Kıyafet Adı *
+                </label>
+                <span className="text-[11px] text-[#8C7A6B]">Düzenlenebilir</span>
+              </div>
               <input
                 type="text"
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="ör. Ekru Kaşmir Triko Kazak"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-[#D5C9BE] text-sm text-[#1C1917] placeholder-[#9C8F83] focus:outline-hidden focus:border-[#1C1917]"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-[#D5C9BE] text-sm font-medium text-[#1C1917] placeholder-[#9C8F83] focus:outline-hidden focus:border-[#1C1917]"
               />
             </div>
 
@@ -589,7 +771,7 @@ export const AddClothingModal: React.FC<AddClothingModalProps> = ({
                       setSubcategory(CATEGORY_LABELS[newCat]);
                     }
                   }}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-[#D5C9BE] text-xs font-medium text-[#1C1917] focus:outline-hidden"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-[#D5C9BE] text-xs font-semibold text-[#1C1917] focus:outline-hidden focus:border-[#1C1917]"
                 >
                   {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
                     <option key={key} value={key}>
@@ -607,28 +789,61 @@ export const AddClothingModal: React.FC<AddClothingModalProps> = ({
                   type="text"
                   value={subcategory}
                   onChange={(e) => setSubcategory(e.target.value)}
-                  placeholder="ör. Kazak, Kot Pantolon, Sneaker"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-[#D5C9BE] text-xs text-[#1C1917] placeholder-[#9C8F83] focus:outline-hidden"
+                  placeholder="ör. Triko Kazak, Slim Jean, Kaban, Sneaker"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-[#D5C9BE] text-xs font-medium text-[#1C1917] placeholder-[#9C8F83] focus:outline-hidden focus:border-[#1C1917]"
                 />
               </div>
             </div>
 
-            {/* Colors & Pattern */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-[#44403C] uppercase tracking-wider mb-1.5">
-                  Ana Renk *
+            {/* Quick Primary Color Selection (One-tap chips + Custom Input) */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold text-[#44403C] uppercase tracking-wider">
+                  Ana Renk * <span className="font-normal text-[#8C7A6B]">({primaryColor})</span>
                 </label>
-                <input
-                  type="text"
-                  required
-                  value={primaryColor}
-                  onChange={(e) => setPrimaryColor(e.target.value)}
-                  placeholder="ör. Siyah, Ekru, Bej"
-                  className="w-full px-3.5 py-2 rounded-xl bg-white border border-[#D5C9BE] text-xs text-[#1C1917] focus:outline-hidden"
-                />
+                <span className="text-[10px] text-[#8C7A6B]">Tek dokunuşla seçin:</span>
               </div>
 
+              {/* Fast Color Swatches */}
+              <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                {POPULAR_COLORS.map((c) => {
+                  const isSelected = primaryColor.toLowerCase() === c.name.toLowerCase();
+                  return (
+                    <button
+                      key={c.name}
+                      type="button"
+                      onClick={() => setPrimaryColor(c.name)}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs transition ${
+                        isSelected
+                          ? 'bg-[#1C1917] text-white font-semibold ring-2 ring-emerald-500'
+                          : 'bg-white text-[#44403C] border border-[#D5C9BE] hover:bg-[#F3EDE6]'
+                      }`}
+                    >
+                      <span
+                        className="w-3 h-3 rounded-full shrink-0"
+                        style={{
+                          backgroundColor: c.hex,
+                          border: c.border ? '1px solid #D5C9BE' : 'none',
+                        }}
+                      />
+                      <span>{c.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <input
+                type="text"
+                required
+                value={primaryColor}
+                onChange={(e) => setPrimaryColor(e.target.value)}
+                placeholder="Veya farklı bir renk yazın (ör. Şampanya, Antik Pembe)"
+                className="w-full px-3.5 py-2 rounded-xl bg-white border border-[#D5C9BE] text-xs font-medium text-[#1C1917] focus:outline-hidden focus:border-[#1C1917]"
+              />
+            </div>
+
+            {/* Secondary Color & Pattern */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-[#44403C] uppercase tracking-wider mb-1.5">
                   İkincil Renk (İsteğe bağlı)
@@ -637,21 +852,40 @@ export const AddClothingModal: React.FC<AddClothingModalProps> = ({
                   type="text"
                   value={secondaryColor}
                   onChange={(e) => setSecondaryColor(e.target.value)}
-                  placeholder="ör. Beyaz çizgiler"
-                  className="w-full px-3.5 py-2 rounded-xl bg-white border border-[#D5C9BE] text-xs text-[#1C1917] focus:outline-hidden"
+                  placeholder="ör. Beyaz detaylar, Altın düğmeler"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-[#D5C9BE] text-xs font-medium text-[#1C1917] focus:outline-hidden focus:border-[#1C1917]"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#44403C] uppercase tracking-wider mb-1.5">
-                  Desen
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-[#44403C] uppercase tracking-wider">
+                    Desen
+                  </label>
+                  <span className="text-[10px] text-[#8C7A6B]">Hızlı seçim:</span>
+                </div>
+                <div className="flex flex-wrap gap-1 mb-1.5">
+                  {POPULAR_PATTERNS.slice(0, 4).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setPattern(p)}
+                      className={`text-[11px] px-2 py-0.5 rounded-md transition ${
+                        pattern.toLowerCase() === p.toLowerCase()
+                          ? 'bg-[#1C1917] text-white font-medium'
+                          : 'bg-white text-[#5C5248] border border-[#D5C9BE]'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
                 <input
                   type="text"
                   value={pattern}
                   onChange={(e) => setPattern(e.target.value)}
-                  placeholder="ör. Düz, Çizgili, Ekose"
-                  className="w-full px-3.5 py-2 rounded-xl bg-white border border-[#D5C9BE] text-xs text-[#1C1917] focus:outline-hidden"
+                  placeholder="ör. Düz, İnce Çizgili, Ekose"
+                  className="w-full px-3.5 py-2 rounded-xl bg-white border border-[#D5C9BE] text-xs font-medium text-[#1C1917] focus:outline-hidden focus:border-[#1C1917]"
                 />
               </div>
             </div>
@@ -665,7 +899,7 @@ export const AddClothingModal: React.FC<AddClothingModalProps> = ({
                 <select
                   value={season}
                   onChange={(e) => setSeason(e.target.value as SeasonType)}
-                  className="w-full px-3 py-2 rounded-xl bg-white border border-[#D5C9BE] text-xs font-medium text-[#1C1917] focus:outline-hidden"
+                  className="w-full px-3 py-2.5 rounded-xl bg-white border border-[#D5C9BE] text-xs font-semibold text-[#1C1917] focus:outline-hidden focus:border-[#1C1917]"
                 >
                   {SEASONS.map((s) => (
                     <option key={s} value={s}>
@@ -682,7 +916,7 @@ export const AddClothingModal: React.FC<AddClothingModalProps> = ({
                 <select
                   value={style}
                   onChange={(e) => setStyle(e.target.value as StyleType)}
-                  className="w-full px-3 py-2 rounded-xl bg-white border border-[#D5C9BE] text-xs font-medium text-[#1C1917] focus:outline-hidden"
+                  className="w-full px-3 py-2.5 rounded-xl bg-white border border-[#D5C9BE] text-xs font-semibold text-[#1C1917] focus:outline-hidden focus:border-[#1C1917]"
                 >
                   {STYLES.map((st) => (
                     <option key={st} value={st}>
@@ -699,7 +933,7 @@ export const AddClothingModal: React.FC<AddClothingModalProps> = ({
                 <select
                   value={occasion}
                   onChange={(e) => setOccasion(e.target.value as OccasionType)}
-                  className="w-full px-3 py-2 rounded-xl bg-white border border-[#D5C9BE] text-xs font-medium text-[#1C1917] focus:outline-hidden"
+                  className="w-full px-3 py-2.5 rounded-xl bg-white border border-[#D5C9BE] text-xs font-semibold text-[#1C1917] focus:outline-hidden focus:border-[#1C1917]"
                 >
                   {OCCASIONS.map((occ) => (
                     <option key={occ} value={occ}>

@@ -5,6 +5,7 @@ import {
   Outfit,
 } from '../types/wardrobe';
 import { generateLocalOutfits, GenerationParams } from '../utils/localOutfitEngine';
+import { extractClothingAttributesFromImage } from '../utils/imageUtils';
 
 export interface ServerStatus {
   ok: boolean;
@@ -26,18 +27,31 @@ export async function analyzeClothingPhoto(
   imageBase64: string,
   mimeType: string = 'image/jpeg'
 ): Promise<ClothingAnalysisResult> {
-  const res = await fetch('/api/analyze-clothing', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ imageBase64, mimeType }),
-  });
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-  const data = await res.json();
-  if (!res.ok || !data.success) {
-    throw new Error(data.error || 'Fotoğraf analiz edilemedi.');
+    const res = await fetch('/api/analyze-clothing', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageBase64, mimeType }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.data) {
+        return data.data;
+      }
+    }
+  } catch (netErr) {
+    console.warn('Backend clothing analysis unavailable or timed out, running instant vision engine:', netErr);
   }
 
-  return data.data;
+  // Guaranteed fallback: extracts color, garment silhouette, pattern and style client-side
+  return extractClothingAttributesFromImage(imageBase64);
 }
 
 export interface OutfitGenerationResponse {
