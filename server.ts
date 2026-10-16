@@ -12,7 +12,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 // Body parser with 35mb limit for clothing photos
 app.use(express.json({ limit: '35mb' }));
@@ -505,6 +505,17 @@ app.get('/api/weather', async (req: Request, res: Response) => {
 // Setup Vite middleware in dev or serve dist in production
 async function startServer() {
   const isProd = process.env.NODE_ENV === 'production';
+  const publicPath = path.resolve(__dirname, 'public');
+
+  // Set Service-Worker-Allowed header for PWABuilder compliance
+  app.get('/service-worker.js', (req, res, next) => {
+    res.setHeader('Service-Worker-Allowed', '/');
+    res.setHeader('Content-Type', 'application/javascript');
+    next();
+  });
+
+  // Explicitly serve public assets (manifest, service-worker, icons, screenshots)
+  app.use(express.static(publicPath));
 
   if (!isProd) {
     const vite = await createViteServer({

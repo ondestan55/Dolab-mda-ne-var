@@ -1,0 +1,91 @@
+{
+  "id": "/",
+  "name": "Dolabımda Ne Var AI",
+  "short_name": "DolabımAI",
+  "description": "Yapay zekâ destekli kişisel gardırop, akıllı kıyafet analizi ve stil kombin asistanı.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#FAF8F5",
+  "theme_color": "#1C1917",
+  "lang": "tr",
+  "dir": "ltr",
+  "categories": ["lifestyle", "shopping", "utilities"],
+  "icons": [
+    {
+      "src": "/icons/icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/desktop.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Dolabımda Ne Var AI - Masaüstü Görünümü"
+    },
+    {
+      "src": "/screenshots/mobile.png",
+      "sizes": "750x1334",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Dolabımda Ne Var AI - Mobil Görünümü"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Kıyafet Ekle",
+      "short_name": "Ekle",
+      "description": "Dolabınıza yeni kıyafet fotoğrafı ekleyin",
+      "url": "/?action=add",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Kombin Oluştur",
+      "short_name": "Kombin",
+      "description": "Yapay zekâ ile yeni kombinler tasarlayın",
+      "url": "/?tab=generate",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
+}

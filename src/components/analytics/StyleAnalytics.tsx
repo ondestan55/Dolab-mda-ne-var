@@ -182,30 +182,17 @@ export const StyleAnalytics: React.FC<StyleAnalyticsProps> = ({
           </p>
         </div>
 
-        {/* Cost Per Wear */}
+        {/* Style Diversity */}
         <div className="p-5 rounded-3xl bg-[#FAF8F5] border border-[#E7E0D8] space-y-2">
           <span className="text-xs font-semibold text-[#8C7A6B] uppercase tracking-wider block">
-            Ort. Giyim Başı Maliyet
+            Stil Çeşitliliği
           </span>
-          {stats.avgCostPerWear !== null ? (
-            <>
-              <span className="font-serif-editorial text-4xl font-bold text-[#2E5A36] block">
-                {stats.avgCostPerWear.toLocaleString('tr-TR')} TL
-              </span>
-              <p className="text-[11px] text-[#786C60]">
-                {stats.itemsWithPriceCount} fiyatlı parça üzerinden hesaplandı.
-              </p>
-            </>
-          ) : (
-            <>
-              <span className="text-sm font-semibold text-[#8C7A6B] block pt-2">
-                Fiyat bilgisi girilmedi
-              </span>
-              <p className="text-[11px] text-[#786C60]">
-                Kıyafetlerinize satın alma fiyatı ekleyerek maliyet analizi görebilirsiniz.
-              </p>
-            </>
-          )}
+          <span className="font-serif-editorial text-4xl font-bold text-[#1C1917] block">
+            {Object.keys(stats.categoryCounts).length} Kategori
+          </span>
+          <p className="text-[11px] text-[#786C60]">
+            Gardırobunuzda {stats.totalItems} parça ile dengeli stil dağılımı.
+          </p>
         </div>
 
         {/* Duplicates Alert */}

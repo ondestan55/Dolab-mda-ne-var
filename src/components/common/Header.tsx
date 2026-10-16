@@ -5,8 +5,10 @@ import {
   Compass,
   MapPin,
   RefreshCw,
+  Download,
 } from 'lucide-react';
 import { WeatherInfo } from '../../types/wardrobe';
+import { usePWAInstall } from '../../hooks/usePWAInstall';
 
 interface HeaderProps {
   weather: WeatherInfo | null;
@@ -25,6 +27,7 @@ export const Header: React.FC<HeaderProps> = ({
   onRefreshLocation,
   isDetectingLocation,
 }) => {
+  const { isInstallable, promptInstall } = usePWAInstall();
   const today = new Date();
   const formattedDate = new Intl.DateTimeFormat('tr-TR', {
     weekday: 'long',
@@ -93,6 +96,18 @@ export const Header: React.FC<HeaderProps> = ({
           />
           {hasGeminiKey ? 'Gemini AI Aktif' : 'Yerel Stil Motoru'}
         </div>
+
+        {/* PWA Install Button */}
+        {isInstallable && (
+          <button
+            onClick={promptInstall}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-[#4A5320] text-[#FAF8F5] hover:bg-[#3B4219] transition shadow-xs active:scale-98"
+            title="Uygulamayı Cihazınıza Yükleyin"
+          >
+            <Download className="w-3.5 h-3.5 text-[#E6DEC8]" />
+            <span className="hidden sm:inline">Uygulamayı Yükle</span>
+          </button>
+        )}
 
         {/* Generate Outfit Quick Button */}
         <button

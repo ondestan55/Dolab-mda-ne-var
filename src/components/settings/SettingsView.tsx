@@ -161,9 +161,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <span className="font-semibold">{weather.temperature}°C</span>
               </div>
               <span className="text-[11px] text-[#8C7A6B]">
-                {weather.latitude && weather.longitude
-                  ? `Koordinat: ${weather.latitude.toFixed(2)}, ${weather.longitude.toFixed(2)}`
-                  : 'Canlı Open-Meteo'}
+                {weather.isAutoDetected ? 'Otomatik Konum Algılandı' : 'Canlı Open-Meteo'}
               </span>
             </div>
           )}
