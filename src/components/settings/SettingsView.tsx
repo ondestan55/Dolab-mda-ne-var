@@ -15,7 +15,8 @@ import {
   MapPin,
   RefreshCw,
 } from 'lucide-react';
-import { UserPreferences, WeatherInfo } from '../../types/wardrobe';
+import { UserPreferences, WeatherInfo, AuthUser } from '../../types/wardrobe';
+import { User, LogOut } from 'lucide-react';
 
 interface SettingsViewProps {
   preferences: UserPreferences;
@@ -25,6 +26,8 @@ interface SettingsViewProps {
   onTriggerAutoLocation: () => Promise<void>;
   isDetectingLocation?: boolean;
   hasGeminiKey: boolean;
+  currentUser?: AuthUser | null;
+  onLogout?: () => void;
   onLoadDemoData: () => Promise<void>;
   onRemoveDemoData: () => Promise<void>;
   onClearAllData: () => Promise<void>;
@@ -42,6 +45,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onTriggerAutoLocation,
   isDetectingLocation,
   hasGeminiKey,
+  currentUser,
+  onLogout,
   onLoadDemoData,
   onRemoveDemoData,
   onClearAllData,
@@ -106,9 +111,47 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           Ayarlar ve Profil
         </h2>
         <p className="text-xs sm:text-sm text-[#786C60] mt-1">
-          Konum ve hava durumu tercihlerinizi yönetin, verilerinizi yedekleyin veya demo parçaları düzenleyin.
+          Hesabınızı ve tercihlerinizi yönetin, verilerinizi yedekleyin veya demo parçaları düzenleyin.
         </p>
       </div>
+
+      {/* User Account Card */}
+      {currentUser && (
+        <div className="bg-[#FAF8F5] p-6 rounded-3xl border border-[#E7E0D8] space-y-4">
+          <div className="flex items-center justify-between border-b border-[#E7E0D8] pb-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-[#1C1917] text-[#FAF8F5] flex items-center justify-center font-bold text-sm">
+                {currentUser.name.slice(0, 2).toUpperCase()}
+              </div>
+              <div>
+                <h3 className="font-serif-editorial text-xl font-bold text-[#1C1917]">
+                  {currentUser.name}
+                </h3>
+                <p className="text-xs text-[#786C60]">{currentUser.email}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {currentUser.emailVerified && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  <Check className="w-3.5 h-3.5" />
+                  E-posta Onaylandı
+                </span>
+              )}
+              {onLogout && (
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 transition"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Çıkış Yap</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 1. Location & Weather Preference */}
       <div className="bg-[#FAF8F5] p-6 rounded-3xl border border-[#E7E0D8] space-y-4">

@@ -18,15 +18,45 @@ import {
   OutfitPlan,
   UserPreferences,
   WeatherInfo,
+  AuthUser,
 } from './types/wardrobe';
 import { wardrobeDb } from './services/db';
 import { checkServerStatus, fetchLiveWeather } from './services/api';
 import { DEMO_CLOTHING_ITEMS, DEMO_OUTFITS } from './data/demoWardrobe';
 import { Shirt, Sparkles, Check, AlertCircle } from 'lucide-react';
+import { AuthScreen } from './components/auth/AuthScreen';
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<NavTab>('home');
   const [isLoading, setIsLoading] = useState(true);
+
+  // Authentication User State
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => {
+    try {
+      const saved = localStorage.getItem('wardrobe_auth_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const handleLoginSuccess = (user: AuthUser, token?: string) => {
+    setCurrentUser(user);
+    try {
+      localStorage.setItem('wardrobe_auth_user', JSON.stringify(user));
+      if (token) localStorage.setItem('wardrobe_auth_token', token);
+    } catch {}
+    showToast(`Hoş geldin, ${user.name}!`);
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    try {
+      localStorage.removeItem('wardrobe_auth_user');
+      localStorage.removeItem('wardrobe_auth_token');
+    } catch {}
+    showToast('Oturum kapatıldı.');
+  };
 
   // Core Data
   const [items, setItems] = useState<ClothingItem[]>([]);
@@ -316,6 +346,11 @@ export default function App() {
     );
   }
 
+  // Authentication Guard: display AuthScreen if user is not logged in
+  if (!currentUser) {
+    return <AuthScreen onLoginSuccess={handleLoginSuccess} />;
+  }
+
   return (
     <div className="min-h-screen bg-[#FAF8F5] text-[#1C1917] flex flex-col md:flex-row antialiased">
       {/* Desktop Sidebar */}
@@ -328,10 +363,12 @@ export default function App() {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-h-screen min-w-0 pb-20 md:pb-10">
-        {/* Top Header with automatic location refresh */}
+        {/* Top Header with automatic location refresh and user profile */}
         <Header
           weather={weather}
           hasGeminiKey={hasGeminiKey}
+          currentUser={currentUser}
+          onLogout={handleLogout}
           onOpenAddModal={() => setIsAddModalOpen(true)}
           onOpenGenerate={() => setCurrentTab('generate')}
           onRefreshLocation={handleAutoDetectLocation}
@@ -425,6 +462,8 @@ export default function App() {
               onTriggerAutoLocation={handleAutoDetectLocation}
               isDetectingLocation={isDetectingLocation}
               hasGeminiKey={hasGeminiKey}
+              currentUser={currentUser}
+              onLogout={handleLogout}
               onLoadDemoData={handleLoadDemoData}
               onRemoveDemoData={handleRemoveDemoData}
               onClearAllData={handleClearAllData}

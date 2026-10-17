@@ -164,3 +164,12 @@ export interface WeatherInfo {
   isEstimated?: boolean;
   isAutoDetected?: boolean;
 }
+
+export interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+  avatarUrl?: string;
+  emailVerified: boolean;
+  createdAt: number;
+}

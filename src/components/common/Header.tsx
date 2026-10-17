@@ -7,12 +7,15 @@ import {
   RefreshCw,
   Download,
 } from 'lucide-react';
-import { WeatherInfo } from '../../types/wardrobe';
+import { WeatherInfo, AuthUser } from '../../types/wardrobe';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
+import { LogOut, CheckCircle } from 'lucide-react';
 
 interface HeaderProps {
   weather: WeatherInfo | null;
   hasGeminiKey: boolean;
+  currentUser?: AuthUser | null;
+  onLogout?: () => void;
   onOpenAddModal: () => void;
   onOpenGenerate: () => void;
   onRefreshLocation?: () => void;
@@ -22,6 +25,8 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   weather,
   hasGeminiKey,
+  currentUser,
+  onLogout,
   onOpenAddModal,
   onOpenGenerate,
   onRefreshLocation,
@@ -126,6 +131,31 @@ export const Header: React.FC<HeaderProps> = ({
           <Plus className="w-4 h-4" />
           <span>Kıyafet Ekle</span>
         </button>
+
+        {/* User Account & Logout */}
+        {currentUser && (
+          <div className="flex items-center gap-2 pl-2 border-l border-[#E7E0D8]">
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#F0EBE1] border border-[#E7E0D8] text-xs">
+              <span className="font-semibold text-[#1C1917] max-w-[100px] sm:max-w-[130px] truncate">
+                {currentUser.name}
+              </span>
+              {currentUser.emailVerified && (
+                <span title="E-posta onaylandı" className="text-emerald-700 flex items-center">
+                  <CheckCircle className="w-3.5 h-3.5 fill-emerald-100 text-emerald-600" />
+                </span>
+              )}
+            </div>
+            {onLogout && (
+              <button
+                onClick={onLogout}
+                className="p-2 rounded-xl text-[#8C7A6B] hover:text-red-700 hover:bg-red-50 border border-transparent hover:border-red-200 transition"
+                title="Çıkış Yap"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </header>
   );

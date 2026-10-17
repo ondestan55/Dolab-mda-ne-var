@@ -3,6 +3,7 @@ import {
   ClothingAnalysisResult,
   WeatherInfo,
   Outfit,
+  AuthUser,
 } from '../types/wardrobe';
 import { generateLocalOutfits, GenerationParams } from '../utils/localOutfitEngine';
 import { extractClothingAttributesFromImage } from '../utils/imageUtils';
@@ -10,6 +11,69 @@ import { extractClothingAttributesFromImage } from '../utils/imageUtils';
 export interface ServerStatus {
   ok: boolean;
   hasGeminiKey: boolean;
+}
+
+export interface AuthResponse {
+  success: boolean;
+  message?: string;
+  error?: string;
+  email?: string;
+  codePreview?: string;
+  user?: AuthUser;
+  token?: string;
+  requiresVerification?: boolean;
+}
+
+export async function registerUser(name: string, email: string, password: string): Promise<AuthResponse> {
+  try {
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password }),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: 'Sunucuya bağlanılamadı: ' + err.message };
+  }
+}
+
+export async function verifyEmailCode(email: string, code: string): Promise<AuthResponse> {
+  try {
+    const res = await fetch('/api/auth/verify-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code }),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: 'Sunucuya bağlanılamadı: ' + err.message };
+  }
+}
+
+export async function resendEmailCode(email: string): Promise<AuthResponse> {
+  try {
+    const res = await fetch('/api/auth/resend-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: 'Sunucuya bağlanılamadı: ' + err.message };
+  }
+}
+
+export async function loginUser(email: string, password: string): Promise<AuthResponse> {
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: 'Sunucuya bağlanılamadı: ' + err.message };
+  }
 }
 
 export async function checkServerStatus(): Promise<ServerStatus> {
@@ -29,7 +93,8 @@ export async function analyzeClothingPhoto(
 ): Promise<ClothingAnalysisResult> {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    // Allow up to 20 seconds for Gemini 3.8 multimodal analysis to return complete, accurate result
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
 
     const res = await fetch('/api/analyze-clothing', {
       method: 'POST',
@@ -53,6 +118,7 @@ export async function analyzeClothingPhoto(
   // Guaranteed fallback: extracts color, garment silhouette, pattern and style client-side
   return extractClothingAttributesFromImage(imageBase64);
 }
+
 
 export interface OutfitGenerationResponse {
   outfits: Outfit[];

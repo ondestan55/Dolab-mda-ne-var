@@ -16,6 +16,9 @@ import {
   ScanLine,
   HelpCircle,
   RotateCcw,
+  Sliders,
+  MousePointerClick,
+  Undo2,
 } from 'lucide-react';
 import {
   ClothingItem,
@@ -32,6 +35,7 @@ import {
   validateImageFile,
   processAndCompressImage,
   removeClothingBackground,
+  eraseBackgroundAtPoint,
 } from '../../utils/imageUtils';
 import { analyzeClothingPhoto } from '../../services/api';
 
@@ -70,8 +74,13 @@ export const AddClothingModal: React.FC<AddClothingModalProps> = ({
   const [rawOriginalUrl, setRawOriginalUrl] = useState<string | null>(null);
   const [transparentCutoutUrl, setTransparentCutoutUrl] = useState<string | null>(null);
   const [stickerWhiteUrl, setStickerWhiteUrl] = useState<string | null>(null);
-  const [cutoutMode, setCutoutMode] = useState<'transparent' | 'sticker' | 'original'>('transparent');
+  const [cutoutMode, setCutoutMode] = useState<'transparent' | 'sticker' | 'original'>('sticker');
   const [photoMimeType, setPhotoMimeType] = useState<string>('image/jpeg');
+
+  // Background removal fine-tuning
+  const [tolerance, setTolerance] = useState<number>(36);
+  const [isMagicWandActive, setIsMagicWandActive] = useState<boolean>(false);
+  const [showAdjustControls, setShowAdjustControls] = useState<boolean>(false);
 
   const [isRemovingBg, setIsRemovingBg] = useState(false);
   const [isScanningVisual, setIsScanningVisual] = useState(false);
@@ -121,8 +130,11 @@ export const AddClothingModal: React.FC<AddClothingModalProps> = ({
     setRawOriginalUrl(null);
     setTransparentCutoutUrl(null);
     setStickerWhiteUrl(null);
-    setCutoutMode('transparent');
+    setCutoutMode('sticker');
     setPhotoMimeType('image/jpeg');
+    setTolerance(36);
+    setIsMagicWandActive(false);
+    setShowAdjustControls(false);
     setIsRemovingBg(false);
     setIsScanningVisual(false);
     setIsAnalyzing(false);
@@ -212,72 +224,70 @@ export const AddClothingModal: React.FC<AddClothingModalProps> = ({
   };
 
   /**
-   * Unified processor:
+   * High-Speed Parallel Processor:
    * 1. Stores raw original.
-   * 2. Shows scanner animation.
-   * 3. Performs Gardrops-style Sticker Background Removal (Transparent PNG).
-   * 4. Auto-scans with AI to populate fields (with 100% user editability).
+   * 2. Runs Gardrops-style Sticker Background Removal with white contour.
+   * 3. Runs Gemini 3.8 Flash Vision simultaneously to auto-fill category, color, season, and style.
    */
   const processImageData = async (dataUrl: string, mimeType: string) => {
     setRawOriginalUrl(dataUrl);
     setPhotoDataUrl(dataUrl);
     setPhotoMimeType(mimeType);
 
-    // Start scanner visual animation
+    // Visual indicators
     setIsScanningVisual(true);
     setIsRemovingBg(true);
     setIsAnalyzing(true);
-    setAnalysisStatus('Gardrops tarzı sticker kesimi ve yapay zekâ taraması yapılıyor...');
+    setAnalysisStatus('Gardrops sticker kesimi ve yapay zekâ analizi yapılıyor...');
 
-    try {
-      // 1. Generate transparent cutout (no studio background/no shadow!)
-      const transparentCutout = await removeClothingBackground(dataUrl, 'transparent');
-      setTransparentCutoutUrl(transparentCutout);
-      setPhotoDataUrl(transparentCutout);
-      setCutoutMode('transparent');
-    } catch (bgErr) {
-      console.warn('Background removal error:', bgErr);
-    } finally {
-      setIsRemovingBg(false);
-    }
+    // 1. Task A: Clean Sticker Background Removal
+    const bgRemovalPromise = removeClothingBackground(dataUrl, 'sticker', tolerance)
+      .then((stickerCutout) => {
+        setStickerWhiteUrl(stickerCutout);
+        setPhotoDataUrl(stickerCutout);
+        setCutoutMode('sticker');
+      })
+      .catch((bgErr) => {
+        console.warn('Background removal error:', bgErr);
+      })
+      .finally(() => {
+        setIsRemovingBg(false);
+      });
 
-    // 2. Auto-run AI classification (never throws error; always pre-fills)
-    try {
-      const result = await analyzeClothingPhoto(dataUrl, mimeType);
+    // 2. Task B: Gemini AI Clothing Analysis (Runs in parallel with zero lag)
+    const aiAnalysisPromise = analyzeClothingPhoto(dataUrl, mimeType)
+      .then((result) => {
+        if (result.name) setName(result.name);
+        if (result.category) setCategory(result.category);
+        if (result.subcategory) setSubcategory(result.subcategory);
+        if (result.primaryColor) setPrimaryColor(result.primaryColor);
+        if (result.secondaryColor) setSecondaryColor(result.secondaryColor);
+        if (result.pattern) setPattern(result.pattern);
+        if (result.style) setStyle(result.style);
+        if (result.season) setSeason(result.season);
+        if (result.occasion) setOccasion(result.occasion);
+        if (result.pairingSuggestions) setPairingTip(result.pairingSuggestions);
 
-      // Populate form fields with high-fidelity guesses
-      if (result.name) setName(result.name);
-      if (result.category) setCategory(result.category);
-      if (result.subcategory) setSubcategory(result.subcategory);
-      if (result.primaryColor) setPrimaryColor(result.primaryColor);
-      if (result.secondaryColor) setSecondaryColor(result.secondaryColor);
-      if (result.pattern) setPattern(result.pattern);
-      if (result.style) setStyle(result.style);
-      if (result.season) setSeason(result.season);
-      if (result.occasion) setOccasion(result.occasion);
-      if (result.pairingSuggestions) setPairingTip(result.pairingSuggestions);
+        setAiFilledFields(true);
+        setAnalysisStatus('Kıyafet detayları otomatik dolduruldu ✓');
+      })
+      .catch((aiErr: any) => {
+        console.warn('AI analysis fallback handled:', aiErr);
+        setAnalysisStatus('Temel bilgiler hazırlandı ✓');
+      })
+      .finally(() => {
+        setIsAnalyzing(false);
+        setTimeout(() => setIsScanningVisual(false), 1200);
+        setTimeout(() => setAnalysisStatus(null), 4500);
+      });
 
-      setAiFilledFields(true);
-      setAnalysisStatus('Kıyafet detayları otomatik dolduruldu ✓');
-    } catch (aiErr: any) {
-      console.warn('AI analysis fallback handled:', aiErr);
-      if (!name) setName('Yeni Kıyafet');
-      setAnalysisStatus('Temel bilgiler hazırlandı ✓');
-    } finally {
-      setIsAnalyzing(false);
-      setTimeout(() => {
-        setIsScanningVisual(false);
-      }, 1200);
-      setTimeout(() => {
-        setAnalysisStatus(null);
-      }, 4500);
-    }
+    await Promise.allSettled([bgRemovalPromise, aiAnalysisPromise]);
   };
 
   /**
    * Switch between cutout modes:
+   * - 'sticker': Clean cutout with crisp white contour outline (Gardrops Style)
    * - 'transparent': Clean transparent PNG (Sticker)
-   * - 'sticker': Clean transparent with crisp white contour outline
    * - 'original': Untouched original
    */
   const handleCutoutModeChange = async (mode: 'transparent' | 'sticker' | 'original') => {
@@ -289,30 +299,57 @@ export const AddClothingModal: React.FC<AddClothingModalProps> = ({
       return;
     }
 
-    if (mode === 'transparent') {
-      if (transparentCutoutUrl) {
-        setPhotoDataUrl(transparentCutoutUrl);
-      } else {
-        setIsRemovingBg(true);
-        const cutout = await removeClothingBackground(rawOriginalUrl, 'transparent');
-        setTransparentCutoutUrl(cutout);
-        setPhotoDataUrl(cutout);
-        setIsRemovingBg(false);
-      }
-      return;
+    setIsRemovingBg(true);
+    try {
+      const cutout = await removeClothingBackground(rawOriginalUrl, mode, tolerance);
+      setPhotoDataUrl(cutout);
+      if (mode === 'transparent') setTransparentCutoutUrl(cutout);
+      if (mode === 'sticker') setStickerWhiteUrl(cutout);
+    } catch (err) {
+      console.warn('Cutout mode change failed:', err);
+    } finally {
+      setIsRemovingBg(false);
     }
+  };
 
-    if (mode === 'sticker') {
-      if (stickerWhiteUrl) {
-        setPhotoDataUrl(stickerWhiteUrl);
-      } else {
-        setIsRemovingBg(true);
-        const sticker = await removeClothingBackground(rawOriginalUrl, 'sticker');
-        setStickerWhiteUrl(sticker);
-        setPhotoDataUrl(sticker);
-        setIsRemovingBg(false);
-      }
-      return;
+  /**
+   * Re-run background removal when user adjusts tolerance slider
+   */
+  const handleToleranceChange = async (newVal: number) => {
+    setTolerance(newVal);
+    if (!rawOriginalUrl || cutoutMode === 'original') return;
+    setIsRemovingBg(true);
+    try {
+      const updated = await removeClothingBackground(rawOriginalUrl, cutoutMode, newVal);
+      setPhotoDataUrl(updated);
+      if (cutoutMode === 'transparent') setTransparentCutoutUrl(updated);
+      if (cutoutMode === 'sticker') setStickerWhiteUrl(updated);
+    } catch (err) {
+      console.warn('Tolerance update failed:', err);
+    } finally {
+      setIsRemovingBg(false);
+    }
+  };
+
+  /**
+   * Tap-to-Erase background on preview click
+   */
+  const handleImageClick = async (e: React.MouseEvent<HTMLImageElement>) => {
+    if (!isMagicWandActive || !photoDataUrl) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const xRatio = (e.clientX - rect.left) / rect.width;
+    const yRatio = (e.clientY - rect.top) / rect.height;
+
+    setIsRemovingBg(true);
+    try {
+      const cleaned = await eraseBackgroundAtPoint(photoDataUrl, xRatio, yRatio, tolerance);
+      setPhotoDataUrl(cleaned);
+      if (cutoutMode === 'transparent') setTransparentCutoutUrl(cleaned);
+      if (cutoutMode === 'sticker') setStickerWhiteUrl(cleaned);
+    } catch (err) {
+      console.warn('Magic wand tap failed:', err);
+    } finally {
+      setIsRemovingBg(false);
     }
   };
 
@@ -589,16 +626,31 @@ export const AddClothingModal: React.FC<AddClothingModalProps> = ({
               /* Photo Preview with Gardrops Sticker Scanner & Transparent Cutout View */
               <div className="rounded-2xl border border-[#E7E0D8] bg-[#F7F4EE] p-4 flex flex-col sm:flex-row items-center gap-5">
                 {/* Image Cutout Container (Transparent Checkerboard like Photoshop / Gardrops) */}
-                <div className="relative w-40 h-48 rounded-2xl overflow-hidden border border-[#D5C9BE] shrink-0 shadow-sm flex items-center justify-center p-2 bg-checkerboard group">
+                <div
+                  onClick={handleImageClick}
+                  className={`relative w-44 h-52 rounded-2xl overflow-hidden border border-[#D5C9BE] shrink-0 shadow-sm flex items-center justify-center p-2 bg-checkerboard group select-none transition ${
+                    isMagicWandActive ? 'cursor-crosshair ring-2 ring-emerald-500' : ''
+                  }`}
+                  title={isMagicWandActive ? 'Silmek istediğiniz arka plan noktasına tıklayın' : undefined}
+                >
                   <img
                     src={photoDataUrl}
                     alt="Kıyafet Sticker Kesimi"
-                    className={`w-full h-full object-contain transition duration-300 ${
+                    className={`w-full h-full object-contain transition duration-300 pointer-events-auto ${
                       cutoutMode === 'sticker'
                         ? 'drop-shadow-[0_0_4px_rgba(255,255,255,0.95)]'
                         : 'drop-shadow-sm'
                     }`}
                   />
+
+                  {/* Magic Wand Hint Indicator */}
+                  {isMagicWandActive && (
+                    <div className="absolute top-2 inset-x-2 text-center pointer-events-none z-10">
+                      <span className="text-[10px] bg-emerald-700/90 text-white px-2 py-0.5 rounded-full font-semibold shadow-xs">
+                        🎯 Silinecek noktaya tıklayın
+                      </span>
+                    </div>
+                  )}
 
                   {/* Gardrops-Style Active Laser Scanner Animation */}
                   {isScanningVisual && (
@@ -697,6 +749,44 @@ export const AddClothingModal: React.FC<AddClothingModalProps> = ({
                     </div>
                   </div>
 
+                  {/* Background Tuning & Magic Wand Tools */}
+                  {cutoutMode !== 'original' && (
+                    <div className="p-2.5 rounded-xl bg-white/70 border border-[#DDD3C5] space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold text-[#5C5248] flex items-center gap-1">
+                          <Sliders className="w-3.5 h-3.5" />
+                          Kesim Hassasiyeti ({tolerance})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setIsMagicWandActive(!isMagicWandActive)}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
+                            isMagicWandActive
+                              ? 'bg-emerald-600 text-white shadow-xs'
+                              : 'bg-[#F0EBE1] text-[#44403C] hover:bg-[#EAE2D5]'
+                          }`}
+                          title="Fotoğrafta kalan arka plan noktasına tıklayarak sil"
+                        >
+                          <MousePointerClick className="w-3.5 h-3.5" />
+                          <span>{isMagicWandActive ? 'Tıklama Modu Açık' : 'Tıkla & Sil'}</span>
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-[#8C7A6B]">Daha Az Sil</span>
+                        <input
+                          type="range"
+                          min="15"
+                          max="80"
+                          value={tolerance}
+                          onChange={(e) => handleToleranceChange(parseInt(e.target.value, 10))}
+                          className="flex-1 h-1.5 bg-[#D5C9BE] rounded-lg appearance-none cursor-pointer accent-[#1C1917]"
+                        />
+                        <span className="text-[10px] text-[#8C7A6B]">Daha Çok Sil</span>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Re-Analyze trigger */}
                   <div className="flex items-center gap-2 pt-1">
                     <button
@@ -710,11 +800,8 @@ export const AddClothingModal: React.FC<AddClothingModalProps> = ({
                       ) : (
                         <RotateCcw className="w-3.5 h-3.5 text-[#4A5320]" />
                       )}
-                      <span>Yapay Zekâ ile Yeniden Tara</span>
+                      <span>Yapay Zekâ ile Yeniden Analiz Et</span>
                     </button>
-                    <span className="text-[11px] text-[#8C7A6B]">
-                      Yatak, halı veya zemin arka planı kaldırıldı.
-                    </span>
                   </div>
                 </div>
               </div>
