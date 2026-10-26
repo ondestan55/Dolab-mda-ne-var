@@ -169,7 +169,34 @@ export interface AuthUser {
   id: string;
   name: string;
   email: string;
+  role?: 'admin' | 'user';
   avatarUrl?: string;
   emailVerified: boolean;
   createdAt: number;
+}
+
+export interface AdminUserItem {
+  id: string;
+  name: string;
+  email: string;
+  role: 'admin' | 'user';
+  emailVerified: boolean;
+  createdAt: number;
+}
+
+export interface AdminVerificationItem {
+  email: string;
+  name: string;
+  code: string;
+  expiresAt: number;
+  minutesLeft: number;
+}
+
+export interface AdminSmtpSettings {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  isConfigured: boolean;
+  from: string;
 }

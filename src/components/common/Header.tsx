@@ -139,6 +139,11 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="font-semibold text-[#1C1917] max-w-[100px] sm:max-w-[130px] truncate">
                 {currentUser.name}
               </span>
+              {currentUser.role === 'admin' && (
+                <span className="px-1.5 py-0.5 rounded-md bg-[#1C1917] text-[#FAF8F5] text-[9px] font-bold tracking-wider uppercase">
+                  Admin
+                </span>
+              )}
               {currentUser.emailVerified && (
                 <span title="E-posta onaylandı" className="text-emerald-700 flex items-center">
                   <CheckCircle className="w-3.5 h-3.5 fill-emerald-100 text-emerald-600" />

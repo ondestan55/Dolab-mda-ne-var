@@ -12,6 +12,7 @@ import { OutfitDetailModal } from './components/outfits/OutfitDetailModal';
 import { WeeklyCalendar } from './components/calendar/WeeklyCalendar';
 import { StyleAnalytics } from './components/analytics/StyleAnalytics';
 import { SettingsView } from './components/settings/SettingsView';
+import { AdminDashboard } from './components/admin/AdminDashboard';
 import {
   ClothingItem,
   Outfit,
@@ -359,6 +360,7 @@ export default function App() {
         onSelectTab={setCurrentTab}
         itemCount={items.length}
         outfitCount={outfits.length}
+        isAdmin={currentUser?.role === 'admin'}
       />
 
       {/* Main Content Area */}
@@ -473,6 +475,14 @@ export default function App() {
               outfitCount={outfits.length}
             />
           )}
+
+          {currentTab === 'admin' && currentUser?.role === 'admin' && (
+            <AdminDashboard
+              currentUserEmail={currentUser.email}
+              items={items}
+              onOpenAddItem={() => setIsAddModalOpen(true)}
+            />
+          )}
         </main>
       </div>
 
@@ -481,6 +491,7 @@ export default function App() {
         currentTab={currentTab}
         onSelectTab={setCurrentTab}
         itemCount={items.length}
+        isAdmin={currentUser?.role === 'admin'}
       />
 
       {/* Modals */}

@@ -12,6 +12,8 @@ import {
   ShieldCheck,
   Shirt,
   KeyRound,
+  Inbox,
+  ArrowLeft,
 } from 'lucide-react';
 import { registerUser, verifyEmailCode, resendEmailCode, loginUser } from '../../services/api';
 import { AuthUser } from '../../types/wardrobe';
@@ -28,7 +30,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  // 6-digit OTP state
+  // 6-digit OTP state (never shown on screen, user types/pastes from their email)
   const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -36,7 +38,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
-  const [receivedCodePreview, setReceivedCodePreview] = useState<string | null>(null);
 
   // Countdown timer for resending code
   const [resendCooldown, setResendCooldown] = useState(0);
@@ -52,13 +53,17 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
+    setSuccessNotice(null);
 
-    if (!name.trim()) {
-      setErrorMessage('Lütfen adınızı ve soyadınızı girin.');
+    const cleanName = name.trim();
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanName) {
+      setErrorMessage('Lütfen adınızı ve soyadınızı giriniz.');
       return;
     }
-    if (!email.trim() || !email.includes('@')) {
-      setErrorMessage('Geçerli bir e-posta adresi girin.');
+    if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+      setErrorMessage('Lütfen geçerli bir e-posta adresi giriniz.');
       return;
     }
     if (password.length < 6) {
@@ -68,10 +73,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
 
     setIsLoading(true);
     try {
-      const res = await registerUser(name, email, password);
+      const res = await registerUser(cleanName, cleanEmail, password);
       if (res.success) {
-        setReceivedCodePreview(res.codePreview || null);
-        setSuccessNotice(`Onay kodu ${email} adresine gönderildi.`);
+        setOtpDigits(['', '', '', '', '', '']);
+        setSuccessNotice(`${cleanEmail} adresine 6 haneli güvenlik onay kodunuz gönderildi.`);
         setMode('verify');
         setResendCooldown(60);
       } else {
@@ -87,20 +92,21 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
+    setSuccessNotice(null);
 
-    if (!email.trim() || !password) {
-      setErrorMessage('Lütfen e-posta ve şifrenizi girin.');
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !password) {
+      setErrorMessage('Lütfen e-posta ve şifrenizi giriniz.');
       return;
     }
 
     setIsLoading(true);
     try {
-      const res = await loginUser(email, password);
+      const res = await loginUser(cleanEmail, password);
       if (res.success && res.user) {
         onLoginSuccess(res.user, res.token);
       } else if (res.requiresVerification) {
-        setReceivedCodePreview(res.codePreview || null);
-        setErrorMessage('E-posta adresiniz henüz onaylanmamış. Yeni onay kodu gönderildi.');
+        setErrorMessage('E-posta adresiniz henüz onaylanmamış. Onay kodu e-posta adresinize gönderildi.');
         setMode('verify');
         setResendCooldown(60);
       } else {
@@ -114,9 +120,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
   };
 
   const handleVerifyOtp = async (codeToSubmit?: string) => {
-    const fullCode = codeToSubmit || otpDigits.join('');
+    const fullCode = (codeToSubmit || otpDigits.join('')).trim();
     if (fullCode.length !== 6) {
-      setErrorMessage('Lütfen 6 haneli onay kodunun tamamını girin.');
+      setErrorMessage('Lütfen e-postanıza gelen 6 haneli onay kodunun tamamını giriniz.');
       return;
     }
 
@@ -124,17 +130,17 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
     setErrorMessage(null);
 
     try {
-      const res = await verifyEmailCode(email, fullCode);
+      const res = await verifyEmailCode(email.trim().toLowerCase(), fullCode);
       if (res.success && res.user) {
-        setSuccessNotice('Hesabınız başarıyla doğrulandı!');
+        setSuccessNotice('E-posta adresiniz doğrulandı! Giriş yapılıyor...');
         setTimeout(() => {
           onLoginSuccess(res.user!, res.token);
-        }, 500);
+        }, 600);
       } else {
-        setErrorMessage(res.error || 'Onay kodu doğrulanamadı.');
+        setErrorMessage(res.error || 'Girdiğiniz onay kodu geçersiz veya süresi dolmuş.');
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Doğrulama başarısız oldu.');
+      setErrorMessage(err.message || 'Doğrulama işlemi sırasında hata oluştu.');
     } finally {
       setIsLoading(false);
     }
@@ -146,23 +152,21 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
     setErrorMessage(null);
 
     try {
-      const res = await resendEmailCode(email);
+      const res = await resendEmailCode(email.trim().toLowerCase());
       if (res.success) {
-        setReceivedCodePreview(res.codePreview || null);
-        setSuccessNotice('Yeni onay kodu gönderildi!');
+        setSuccessNotice(`Yeni 6 haneli onay kodu ${email} adresine gönderildi. Lütfen gelen kutunuzu kontrol edin.`);
         setResendCooldown(60);
       } else {
-        setErrorMessage(res.error || 'Kod gönderilemedi.');
+        setErrorMessage(res.error || 'Yeni onay kodu gönderilemedi.');
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Kod gönderilemedi.');
+      setErrorMessage(err.message || 'Yeni onay kodu gönderilemedi.');
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleOtpChange = (index: number, value: string) => {
-    // Only accept numeric digit
     const digit = value.replace(/\D/g, '').slice(-1);
     const newDigits = [...otpDigits];
     newDigits[index] = digit;
@@ -172,7 +176,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
       otpInputRefs.current[index + 1]?.focus();
     }
 
-    // Auto submit when all 6 digits entered
+    // Auto-submit when all 6 digits are entered
     if (index === 5 && digit) {
       const completeCode = newDigits.join('');
       if (completeCode.length === 6) {
@@ -202,14 +206,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
       handleVerifyOtp(pasted);
     } else {
       otpInputRefs.current[Math.min(pasted.length, 5)]?.focus();
-    }
-  };
-
-  const fillSimulatedCode = () => {
-    if (receivedCodePreview && receivedCodePreview.length === 6) {
-      const digits = receivedCodePreview.split('');
-      setOtpDigits(digits);
-      handleVerifyOtp(receivedCodePreview);
     }
   };
 
@@ -256,6 +252,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                 onClick={() => {
                   setMode('login');
                   setErrorMessage(null);
+                  setSuccessNotice(null);
                 }}
                 className={`flex-1 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
                   mode === 'login'
@@ -270,6 +267,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                 onClick={() => {
                   setMode('register');
                   setErrorMessage(null);
+                  setSuccessNotice(null);
                 }}
                 className={`flex-1 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
                   mode === 'register'
@@ -323,16 +321,29 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                   <label className="block text-xs font-semibold text-[#44403C] uppercase tracking-wider">
                     Şifre
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEmail('demo@dolabim.ai');
-                      setPassword('123456');
-                    }}
-                    className="text-[11px] text-[#8C7A6B] hover:text-[#1C1917] underline"
-                  >
-                    Demo Bilgileri Doldur
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmail('xceyceyx@gmail.com');
+                        setPassword('Admin2026!');
+                      }}
+                      className="text-[11px] font-semibold text-amber-800 hover:text-amber-950 underline flex items-center gap-0.5 cursor-pointer"
+                    >
+                      👑 Yönetici Girişi Doldur
+                    </button>
+                    <span className="text-[#D6CEC3]">|</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmail('demo@dolabim.ai');
+                        setPassword('123456');
+                      }}
+                      className="text-[11px] text-[#8C7A6B] hover:text-[#1C1917] underline cursor-pointer"
+                    >
+                      Demo
+                    </button>
+                  </div>
                 </div>
                 <div className="relative">
                   <Lock className="w-4 h-4 text-[#A8A29E] absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -350,7 +361,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full mt-2 py-3 px-4 bg-[#1C1917] hover:bg-[#292524] text-[#FAF8F5] font-semibold text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                className="w-full mt-2 py-3 px-4 bg-[#1C1917] hover:bg-[#292524] text-[#FAF8F5] font-semibold text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
               >
                 {isLoading ? (
                   <>
@@ -423,13 +434,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
 
               <div className="p-3 rounded-xl bg-[#FAF8F5] border border-[#E7E0D8] text-xs text-[#78716C] flex items-start gap-2">
                 <ShieldCheck className="w-4 h-4 text-[#4A5320] shrink-0 mt-0.5" />
-                <span>Kayıt olduğunuzda e-posta adresinize 6 haneli bir onay kodu iletilecektir.</span>
+                <span>Kayıt olduğunuzda güvenlik onay kodunuz girdiğiniz e-posta adresine gönderilecektir.</span>
               </div>
 
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full mt-2 py-3 px-4 bg-[#1C1917] hover:bg-[#292524] text-[#FAF8F5] font-semibold text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                className="w-full mt-2 py-3 px-4 bg-[#1C1917] hover:bg-[#292524] text-[#FAF8F5] font-semibold text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
               >
                 {isLoading ? (
                   <>
@@ -446,46 +457,31 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
             </form>
           )}
 
-          {/* 3. VERIFICATION / OTP MODE */}
+          {/* 3. VERIFICATION / OTP MODE (Code is NEVER shown on screen - sent to user's real email) */}
           {mode === 'verify' && (
             <div className="space-y-5 animate-fadeIn">
               <div className="text-center">
-                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-50 text-emerald-700 mb-2">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 border border-emerald-100 shadow-sm mb-3">
                   <KeyRound className="w-6 h-6" />
                 </div>
                 <h2 className="text-lg font-semibold text-[#1C1917]">E-posta Onay Kodu</h2>
-                <p className="text-xs text-[#78716C] mt-1">
-                  <span className="font-medium text-[#1C1917]">{email}</span> adresine 6 haneli güvenlik kodu gönderildi.
+                <p className="text-xs text-[#78716C] mt-1.5 leading-relaxed">
+                  Güvenliğiniz için 6 haneli onay kodu <span className="font-semibold text-[#1C1917] underline">{email}</span> adresine gönderilmiştir.
                 </p>
               </div>
 
-              {/* Simulated Email Delivery Banner */}
-              {receivedCodePreview && (
-                <div className="p-3.5 rounded-2xl bg-amber-50/90 border border-amber-200 text-amber-900 text-xs shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold flex items-center gap-1.5">
-                      📬 Gelen Onay Kodunuz:
-                    </span>
-                    <span className="font-mono text-sm font-bold tracking-widest bg-amber-100 px-2 py-0.5 rounded-md text-amber-950">
-                      {receivedCodePreview}
-                    </span>
-                  </div>
-                  <div className="mt-2 text-right">
-                    <button
-                      type="button"
-                      onClick={fillSimulatedCode}
-                      className="text-[11px] font-semibold text-amber-800 underline hover:text-amber-950"
-                    >
-                      Kodu Otomatik Doldur ve Doğrula →
-                    </button>
-                  </div>
+              {/* Informational Email Delivery Notice - Note: The secret code is strictly NOT shown here */}
+              <div className="p-3.5 rounded-2xl bg-[#FAF8F5] border border-[#E7E0D8] text-xs text-[#57534E] flex items-start gap-3">
+                <Inbox className="w-4 h-4 text-[#8C7A6B] shrink-0 mt-0.5" />
+                <div className="leading-relaxed">
+                  Lütfen e-posta kutunuzun <strong>Gelen Kutusu</strong> ve varsa <strong>Spam / Gereksiz</strong> klasörünü kontrol ederek gelen 6 haneli kodu aşağıya giriniz.
                 </div>
-              )}
+              </div>
 
               {/* 6 Digit OTP Inputs */}
               <div>
                 <label className="block text-center text-xs font-semibold text-[#78716C] uppercase tracking-wider mb-2.5">
-                  6 Haneli Kodu Giriniz
+                  6 Haneli Güvenlik Kodunu Giriniz
                 </label>
                 <div className="flex justify-between gap-2 sm:gap-2.5" onPaste={handleOtpPaste}>
                   {otpDigits.map((digit, idx) => (
@@ -496,11 +492,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                       }}
                       type="text"
                       inputMode="numeric"
+                      pattern="[0-9]*"
                       maxLength={1}
                       value={digit}
                       onChange={(e) => handleOtpChange(idx, e.target.value)}
                       onKeyDown={(e) => handleOtpKeyDown(idx, e)}
-                      className="w-11 h-12 sm:w-12 sm:h-14 text-center text-xl font-bold rounded-xl border border-[#D6CEC3] bg-[#FAF8F5]/80 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1C1917] transition"
+                      autoFocus={idx === 0}
+                      className="w-11 h-12 sm:w-12 sm:h-14 text-center text-xl font-bold rounded-xl border border-[#D6CEC3] bg-[#FAF8F5]/80 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1C1917] transition shadow-inner"
                     />
                   ))}
                 </div>
@@ -510,7 +508,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                 type="button"
                 onClick={() => handleVerifyOtp()}
                 disabled={isLoading || otpDigits.join('').length !== 6}
-                className="w-full py-3 px-4 bg-[#1C1917] hover:bg-[#292524] text-[#FAF8F5] font-semibold text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-40"
+                className="w-full py-3 px-4 bg-[#1C1917] hover:bg-[#292524] text-[#FAF8F5] font-semibold text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-40 cursor-pointer"
               >
                 {isLoading ? (
                   <>
@@ -531,7 +529,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                   type="button"
                   onClick={handleResendCode}
                   disabled={resendCooldown > 0 || isLoading}
-                  className="hover:text-[#1C1917] disabled:opacity-50 flex items-center gap-1 font-medium"
+                  className="hover:text-[#1C1917] disabled:opacity-50 flex items-center gap-1 font-medium transition cursor-pointer"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
                   {resendCooldown > 0 ? `Tekrar gönder (${resendCooldown}s)` : 'Kodu Tekrar Gönder'}
@@ -542,10 +540,39 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                   onClick={() => {
                     setMode('register');
                     setErrorMessage(null);
+                    setSuccessNotice(null);
                   }}
-                  className="hover:text-[#1C1917] underline"
+                  className="hover:text-[#1C1917] underline flex items-center gap-1 cursor-pointer"
                 >
+                  <ArrowLeft className="w-3 h-3" />
                   E-postayı Değiştir
+                </button>
+              </div>
+
+              {/* Troubleshooting / Admin Approval Guide */}
+              <div className="mt-3 p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200/80 text-[11px] text-amber-950 space-y-1.5 leading-relaxed">
+                <div className="font-semibold flex items-center gap-1.5 text-amber-900">
+                  <ShieldCheck className="w-3.5 h-3.5 text-amber-700" />
+                  E-posta Ulaşmadı mı?
+                </div>
+                <p className="text-amber-900/90">
+                  1. Lütfen e-postanızın <strong>Spam / Gereksiz</strong> klasörünü kontrol ediniz.
+                </p>
+                <p className="text-amber-900/90">
+                  2. Sunucuda SMTP henüz aktif edilmediyse; <strong>xceyceyx@gmail.com</strong> hesabıyla yönetici olarak giriş yaparak <strong>Yönetici Paneli &gt; Onay Bekleyenler</strong> sekmesinden bu hesabı tek tıkla onaylayabilirsiniz.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('login');
+                    setEmail('xceyceyx@gmail.com');
+                    setPassword('Admin2026!');
+                    setErrorMessage(null);
+                    setSuccessNotice(null);
+                  }}
+                  className="font-semibold text-amber-950 underline hover:text-black flex items-center gap-1 cursor-pointer pt-0.5"
+                >
+                  👑 Yönetici Girişi Yap ve Kullanıcıyı Onayla →
                 </button>
               </div>
             </div>
@@ -565,7 +592,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
           <button
             type="button"
             onClick={handleGuestLogin}
-            className="w-full py-2.5 px-4 bg-[#F5F2EB] hover:bg-[#ECE6DC] text-[#44403C] font-semibold text-xs sm:text-sm rounded-xl border border-[#E7E0D8] transition-all flex items-center justify-center gap-2"
+            className="w-full py-2.5 px-4 bg-[#F5F2EB] hover:bg-[#ECE6DC] text-[#44403C] font-semibold text-xs sm:text-sm rounded-xl border border-[#E7E0D8] transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
             <Sparkles className="w-4 h-4 text-[#8C7A6B]" />
             <span>Giriş Yapmadan İncele (Hızlı Demo)</span>

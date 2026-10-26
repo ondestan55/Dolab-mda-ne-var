@@ -8,6 +8,7 @@ import {
   BarChart3,
   Settings,
   Shirt,
+  ShieldCheck,
 } from 'lucide-react';
 
 export type NavTab =
@@ -17,13 +18,15 @@ export type NavTab =
   | 'outfits'
   | 'calendar'
   | 'analytics'
-  | 'settings';
+  | 'settings'
+  | 'admin';
 
 interface SidebarProps {
   currentTab: NavTab;
   onSelectTab: (tab: NavTab) => void;
   itemCount: number;
   outfitCount: number;
+  isAdmin?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -31,8 +34,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectTab,
   itemCount,
   outfitCount,
+  isAdmin = false,
 }) => {
-  const menuItems: { id: NavTab; label: string; icon: React.ElementType; badge?: number }[] = [
+  const menuItems: { id: NavTab; label: string; icon: React.ElementType; badge?: number; adminOnly?: boolean }[] = [
     { id: 'home', label: 'Ana Sayfa', icon: Home },
     { id: 'wardrobe', label: 'Dijital Dolabım', icon: Layers, badge: itemCount },
     { id: 'generate', label: 'AI Kombin Oluştur', icon: Sparkles },
@@ -41,6 +45,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'analytics', label: 'Stil Analizim', icon: BarChart3 },
     { id: 'settings', label: 'Ayarlar', icon: Settings },
   ];
+
+  if (isAdmin) {
+    menuItems.push({
+      id: 'admin',
+      label: 'Yönetici Paneli',
+      icon: ShieldCheck,
+      adminOnly: true,
+    });
+  }
 
   return (
     <aside className="hidden md:flex flex-col w-64 lg:w-72 bg-[#F7F4EE] border-r border-[#E7E0D8] min-h-screen p-5 select-none shrink-0">

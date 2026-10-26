@@ -4,6 +4,9 @@ import {
   WeatherInfo,
   Outfit,
   AuthUser,
+  AdminUserItem,
+  AdminVerificationItem,
+  AdminSmtpSettings,
 } from '../types/wardrobe';
 import { generateLocalOutfits, GenerationParams } from '../utils/localOutfitEngine';
 import { extractClothingAttributesFromImage } from '../utils/imageUtils';
@@ -18,7 +21,6 @@ export interface AuthResponse {
   message?: string;
   error?: string;
   email?: string;
-  codePreview?: string;
   user?: AuthUser;
   token?: string;
   requiresVerification?: boolean;
@@ -249,3 +251,91 @@ export async function fetchLiveWeather(
     isAutoDetected: forceAuto,
   };
 }
+
+// ----------------------------------------------------
+// ADMIN API CLIENT METHODS
+// ----------------------------------------------------
+
+export async function fetchAdminUsers(): Promise<{ success: boolean; users: AdminUserItem[] }> {
+  try {
+    const res = await fetch('/api/admin/users');
+    return await res.json();
+  } catch (err) {
+    return { success: false, users: [] };
+  }
+}
+
+export async function fetchAdminVerifications(): Promise<{ success: boolean; verifications: AdminVerificationItem[] }> {
+  try {
+    const res = await fetch('/api/admin/verifications');
+    return await res.json();
+  } catch (err) {
+    return { success: false, verifications: [] };
+  }
+}
+
+export async function approveUserManually(email: string): Promise<{ success: boolean; message?: string; error?: string }> {
+  try {
+    const res = await fetch('/api/admin/approve-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function fetchAdminSmtp(): Promise<{ success: boolean; smtp: AdminSmtpSettings }> {
+  try {
+    const res = await fetch('/api/admin/smtp');
+    return await res.json();
+  } catch (err) {
+    return {
+      success: false,
+      smtp: {
+        host: '',
+        port: 465,
+        secure: true,
+        user: '',
+        isConfigured: false,
+        from: '',
+      },
+    };
+  }
+}
+
+export async function saveAdminSmtp(config: {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  pass?: string;
+  from?: string;
+}): Promise<{ success: boolean; message?: string; warning?: string; error?: string }> {
+  try {
+    const res = await fetch('/api/admin/smtp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function sendAdminTestEmail(email?: string): Promise<{ success: boolean; message?: string; error?: string }> {
+  try {
+    const res = await fetch('/api/admin/send-test-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+

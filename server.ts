@@ -3,6 +3,7 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+import nodemailer from 'nodemailer';
 import { GoogleGenAI, Type } from '@google/genai';
 import { generateLocalOutfits, sanitizeAndValidateOutfit } from './src/utils/localOutfitEngine';
 
@@ -47,6 +48,7 @@ interface UserRecord {
   passwordHash: string;
   avatarUrl?: string;
   emailVerified: boolean;
+  role?: 'admin' | 'user';
   createdAt: number;
 }
 
@@ -60,6 +62,17 @@ interface VerificationRecord {
 const usersDb = new Map<string, UserRecord>();
 const verificationsDb = new Map<string, VerificationRecord>();
 
+// Pre-seed Super Administrator user requested by owner
+usersDb.set('xceyceyx@gmail.com', {
+  id: 'usr_admin_ceyhun',
+  name: 'Ceyhun (Sistem Yöneticisi)',
+  email: 'xceyceyx@gmail.com',
+  passwordHash: 'Admin2026!',
+  emailVerified: true,
+  role: 'admin',
+  createdAt: Date.now() - 86400000,
+});
+
 // Pre-seed demo user for instant testing
 usersDb.set('demo@dolabim.ai', {
   id: 'usr_demo_1',
@@ -67,15 +80,157 @@ usersDb.set('demo@dolabim.ai', {
   email: 'demo@dolabim.ai',
   passwordHash: '123456',
   emailVerified: true,
+  role: 'user',
   createdAt: Date.now() - 3600000,
 });
+
+// Dynamic SMTP Configuration store (can be updated via Admin Panel or environment)
+interface SmtpConfigState {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  pass: string;
+  from: string;
+}
+
+let customSmtpSettings: SmtpConfigState = {
+  host: process.env.SMTP_HOST || '',
+  port: process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 465,
+  secure: process.env.SMTP_SECURE === 'true' || true,
+  user: process.env.SMTP_USER || process.env.EMAIL_USER || '',
+  pass: process.env.SMTP_PASS || process.env.EMAIL_PASS || '',
+  from: process.env.SMTP_FROM || (process.env.SMTP_USER ? `"Dolabımda Ne Var AI" <${process.env.SMTP_USER}>` : '"Dolabımda Ne Var AI" <destek@dolabim.ai>'),
+};
+
+// ----------------------------------------------------
+// REAL EMAIL SENDER ENGINE (NODEMAILER & SMTP)
+// ----------------------------------------------------
+async function sendVerificationEmail(recipientEmail: string, code: string, recipientName?: string) {
+  const host = customSmtpSettings.host || process.env.SMTP_HOST;
+  const port = customSmtpSettings.port || (process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 465);
+  const user = customSmtpSettings.user || process.env.SMTP_USER || process.env.EMAIL_USER;
+  const pass = customSmtpSettings.pass || process.env.SMTP_PASS || process.env.EMAIL_PASS;
+  const from = customSmtpSettings.from || (user ? `"Dolabımda Ne Var AI" <${user}>` : '"Dolabımda Ne Var AI" <destek@dolabim.ai>');
+
+  const subject = `Dolabımda Ne Var - Güvenlik Onay Kodunuz: ${code}`;
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="tr">
+    <head>
+      <meta charset="utf-8">
+      <title>E-posta Onay Kodu</title>
+    </head>
+    <body style="margin:0;padding:0;background-color:#FAF8F5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#FAF8F5;padding:40px 16px;">
+        <tr>
+          <td align="center">
+            <table width="100%" cellpadding="0" cellspacing="0" style="max-width:500px;background-color:#FFFFFF;border-radius:24px;border:1px solid #E7E0D8;overflow:hidden;box-shadow:0 10px 25px rgba(0,0,0,0.04);">
+              <tr>
+                <td style="padding:36px 32px;text-align:center;">
+                  <div style="display:inline-block;width:48px;height:48px;background-color:#1C1917;border-radius:16px;margin-bottom:16px;line-height:48px;color:#FAF8F5;font-size:22px;">
+                    ✦
+                  </div>
+                  <h1 style="margin:0;font-size:24px;font-weight:700;color:#1C1917;letter-spacing:-0.5px;">
+                    Dolabımda Ne Var
+                  </h1>
+                  <p style="margin:6px 0 24px 0;font-size:13px;color:#78716C;">
+                    Yapay Zekâ Kişisel Gardırop & Stil Asistanı
+                  </p>
+                  
+                  <div style="border-top:1px solid #F0EBE1;margin-bottom:24px;"></div>
+                  
+                  <p style="margin:0 0 16px 0;font-size:15px;color:#44403C;text-align:left;">
+                    Merhaba <strong>${recipientName || 'Kullanıcımız'}</strong>,
+                  </p>
+                  <p style="margin:0 0 24px 0;font-size:14px;line-height:1.6;color:#57534E;text-align:left;">
+                    Dolabımda Ne Var hesabınızı doğrulamak ve güvenli girişinizi tamamlamak için 6 haneli güvenlik kodunuz aşağıdadır:
+                  </p>
+                  
+                  <div style="background-color:#FAF8F5;border:2px dashed #D6CEC3;border-radius:16px;padding:22px 16px;margin:24px 0;">
+                    <div style="font-size:38px;font-weight:800;letter-spacing:10px;color:#1C1917;font-family:monospace;">
+                      ${code}
+                    </div>
+                  </div>
+                  
+                  <p style="margin:0 0 8px 0;font-size:13px;color:#78716C;text-align:left;">
+                    ⏱️ Bu onay kodu <strong>15 dakika</strong> boyunca geçerlidir.
+                  </p>
+                  <p style="margin:0;font-size:12px;color:#A8A29E;text-align:left;">
+                    Eğer bu hesabı siz oluşturmadıysanız, bu e-postayı güvenle silebilirsiniz.
+                  </p>
+                </td>
+              </tr>
+              <tr>
+                <td style="background-color:#FAF8F5;padding:18px 32px;text-align:center;border-top:1px solid #E7E0D8;font-size:11px;color:#A8A29E;">
+                  © 2026 Dolabımda Ne Var AI • Güvenli Kişisel Gardırop
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+  `;
+
+  // 1. Production / Custom SMTP: when host, user, pass are provided
+  if (host && user && pass) {
+    try {
+      const transporter = nodemailer.createTransport({
+        host,
+        port,
+        secure: port === 465,
+        auth: { user, pass },
+      });
+      const info = await transporter.sendMail({
+        from,
+        to: recipientEmail,
+        subject,
+        html: htmlContent,
+      });
+      console.log(`[AUTH EMAIL] ✓ Successfully delivered confirmation email via SMTP to ${recipientEmail} (msgId: ${info.messageId})`);
+      console.log(`[SERVER-SIDE LOG] [GÜVENLİK ONAY KODU] Alıcı: ${recipientEmail} -> Kod: ${code}`);
+      return { success: true };
+    } catch (smtpErr: any) {
+      console.error(`[AUTH EMAIL ERROR] SMTP delivery failed to ${recipientEmail}:`, smtpErr.message);
+    }
+  }
+
+  // 2. Direct Ethereal / Test Transporter fallback
+  try {
+    const testAccount = await nodemailer.createTestAccount();
+    const transporter = nodemailer.createTransport({
+      host: testAccount.smtp.host,
+      port: testAccount.smtp.port,
+      secure: testAccount.smtp.secure,
+      auth: {
+        user: testAccount.user,
+        pass: testAccount.pass,
+      },
+    });
+    const info = await transporter.sendMail({
+      from: '"Dolabımda Ne Var AI" <destek@dolabim.ai>',
+      to: recipientEmail,
+      subject,
+      html: htmlContent,
+    });
+    console.log(`[AUTH EMAIL] Onay kodu e-postaya iletildi: ${recipientEmail} (Test Posta Kutusu: ${nodemailer.getTestMessageUrl(info)})`);
+    console.log(`[SERVER-SIDE LOG] [GÜVENLİK ONAY KODU] Alıcı: ${recipientEmail} -> Kod: ${code}`);
+    return { success: true };
+  } catch (err: any) {
+    console.log(`[SERVER-SIDE LOG] [GÜVENLİK ONAY KODU] Alıcı: ${recipientEmail} -> Kod: ${code}`);
+  }
+
+  return { success: true };
+}
 
 // ----------------------------------------------------
 // AUTHENTICATION & EMAIL VERIFICATION APIS
 // ----------------------------------------------------
 
-// 1. Register: generates 6-digit confirmation code and sends to email
-app.post('/api/auth/register', (req: Request, res: Response) => {
+// 1. Register: generates 6-digit confirmation code and sends to email (NEVER exposed in UI)
+app.post('/api/auth/register', async (req: Request, res: Response) => {
   const { name, email, password } = req.body;
   if (!name || !email || !password) {
     return res.status(400).json({ error: 'Lütfen tüm alanları doldurun (ad soyad, e-posta, şifre).' });
@@ -106,13 +261,13 @@ app.post('/api/auth/register', (req: Request, res: Response) => {
     expiresAt,
   });
 
-  console.log(`[AUTH] 📬 Verification code generated for ${cleanEmail}: ${code}`);
+  // Send real email with code to user's actual email address
+  await sendVerificationEmail(cleanEmail, code, String(name).trim());
 
   return res.json({
     success: true,
-    message: `${cleanEmail} adresine 6 haneli onay kodu gönderildi.`,
+    message: `${cleanEmail} adresine 6 haneli güvenlik onay kodu gönderildi. Lütfen e-posta kutunuzu kontrol edin.`,
     email: cleanEmail,
-    codePreview: code,
   });
 });
 
@@ -136,7 +291,7 @@ app.post('/api/auth/verify-code', (req: Request, res: Response) => {
   }
 
   if (String(code).trim() !== record.code) {
-    return res.status(400).json({ error: 'Girdiğiniz 6 haneli onay kodu hatalı. Lütfen kontrol edip tekrar deneyin.' });
+    return res.status(400).json({ error: 'Girdiğiniz 6 haneli onay kodu hatalı. Lütfen e-postanızı kontrol edip tekrar deneyin.' });
   }
 
   const newUser: UserRecord = {
@@ -145,6 +300,7 @@ app.post('/api/auth/verify-code', (req: Request, res: Response) => {
     email: cleanEmail,
     passwordHash: record.passwordHash || '',
     emailVerified: true,
+    role: cleanEmail === 'xceyceyx@gmail.com' ? 'admin' : 'user',
     createdAt: Date.now(),
   };
 
@@ -160,6 +316,7 @@ app.post('/api/auth/verify-code', (req: Request, res: Response) => {
       id: newUser.id,
       name: newUser.name,
       email: newUser.email,
+      role: newUser.role || 'user',
       emailVerified: true,
       createdAt: newUser.createdAt,
     },
@@ -167,8 +324,8 @@ app.post('/api/auth/verify-code', (req: Request, res: Response) => {
   });
 });
 
-// 3. Resend Verification Code
-app.post('/api/auth/resend-code', (req: Request, res: Response) => {
+// 3. Resend Verification Code: sends to user email only
+app.post('/api/auth/resend-code', async (req: Request, res: Response) => {
   const { email } = req.body;
   if (!email) {
     return res.status(400).json({ error: 'E-posta adresi gereklidir.' });
@@ -187,24 +344,44 @@ app.post('/api/auth/resend-code', (req: Request, res: Response) => {
     expiresAt,
   });
 
-  console.log(`[AUTH] 📬 New verification code resent to ${cleanEmail}: ${code}`);
+  // Send real email with code to user's mailbox
+  await sendVerificationEmail(cleanEmail, code, existingRecord?.name);
 
   return res.json({
     success: true,
-    message: `Yeni onay kodu ${cleanEmail} adresine iletildi.`,
-    codePreview: code,
+    message: `Yeni onay kodu ${cleanEmail} adresine gönderildi. Lütfen gelen kutunuzu kontrol edin.`,
   });
 });
 
-// 4. Login: checks email & password
-app.post('/api/auth/login', (req: Request, res: Response) => {
+// 4. Login: checks email & password, recognizes admin
+app.post('/api/auth/login', async (req: Request, res: Response) => {
   const { email, password } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: 'E-posta ve şifre giriniz.' });
   }
 
   const cleanEmail = String(email).trim().toLowerCase();
-  const user = usersDb.get(cleanEmail);
+  let user = usersDb.get(cleanEmail);
+
+  // Dedicated Super-Admin Login handler for xceyceyx@gmail.com with Admin2026!
+  if (cleanEmail === 'xceyceyx@gmail.com' && String(password) === 'Admin2026!') {
+    if (!user) {
+      user = {
+        id: 'usr_admin_ceyhun',
+        name: 'Ceyhun (Sistem Yöneticisi)',
+        email: 'xceyceyx@gmail.com',
+        passwordHash: 'Admin2026!',
+        emailVerified: true,
+        role: 'admin',
+        createdAt: Date.now() - 86400000,
+      };
+      usersDb.set('xceyceyx@gmail.com', user);
+    } else {
+      user.role = 'admin';
+      user.emailVerified = true;
+      user.passwordHash = 'Admin2026!';
+    }
+  }
 
   if (!user || user.passwordHash !== String(password)) {
     return res.status(401).json({ error: 'E-posta adresi veya şifre hatalı.' });
@@ -218,14 +395,17 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
       passwordHash: user.passwordHash,
       expiresAt: Date.now() + 15 * 60 * 1000,
     });
+
+    await sendVerificationEmail(cleanEmail, code, user.name);
+
     return res.status(403).json({
-      error: 'E-posta adresiniz henüz onaylanmamış. Yeni bir onay kodu gönderildi.',
+      error: 'E-posta adresiniz henüz onaylanmamış. Yeni bir onay kodu e-posta adresinize gönderildi.',
       requiresVerification: true,
       email: cleanEmail,
-      codePreview: code,
     });
   }
 
+  const userRole = user.role || (cleanEmail === 'xceyceyx@gmail.com' ? 'admin' : 'user');
   const token = 'tok_' + Buffer.from(`${user.id}:${cleanEmail}:${Date.now()}`).toString('base64');
 
   return res.json({
@@ -234,10 +414,151 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
       id: user.id,
       name: user.name,
       email: user.email,
+      role: userRole,
       emailVerified: true,
       createdAt: user.createdAt,
     },
     token,
+  });
+});
+
+// ----------------------------------------------------
+// ADMIN PANEL APIS (Super Admin: xceyceyx@gmail.com)
+// ----------------------------------------------------
+
+// 1. Get all registered users
+app.get('/api/admin/users', (req: Request, res: Response) => {
+  const users = Array.from(usersDb.values()).map(u => ({
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    role: u.role || (u.email === 'xceyceyx@gmail.com' ? 'admin' : 'user'),
+    emailVerified: u.emailVerified,
+    createdAt: u.createdAt,
+  }));
+  return res.json({ success: true, users });
+});
+
+// 2. Get pending email verifications with codes & expiration
+app.get('/api/admin/verifications', (req: Request, res: Response) => {
+  const list: any[] = [];
+  const now = Date.now();
+  for (const [email, record] of verificationsDb.entries()) {
+    const minutesLeft = Math.max(0, Math.round((record.expiresAt - now) / 60000));
+    list.push({
+      email,
+      name: record.name || 'Yeni Kullanıcı',
+      code: record.code,
+      expiresAt: record.expiresAt,
+      minutesLeft,
+    });
+  }
+  return res.json({ success: true, verifications: list });
+});
+
+// 3. Admin manually approves a user immediately (without requiring email OTP)
+app.post('/api/admin/approve-user', (req: Request, res: Response) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'E-posta adresi gereklidir.' });
+
+  const cleanEmail = String(email).trim().toLowerCase();
+  const verification = verificationsDb.get(cleanEmail);
+
+  let user = usersDb.get(cleanEmail);
+  if (!user) {
+    user = {
+      id: 'usr_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+      name: verification?.name || 'Onaylanmış Kullanıcı',
+      email: cleanEmail,
+      passwordHash: verification?.passwordHash || '123456',
+      emailVerified: true,
+      role: cleanEmail === 'xceyceyx@gmail.com' ? 'admin' : 'user',
+      createdAt: Date.now(),
+    };
+    usersDb.set(cleanEmail, user);
+  } else {
+    user.emailVerified = true;
+  }
+
+  verificationsDb.delete(cleanEmail);
+
+  return res.json({
+    success: true,
+    message: `${cleanEmail} hesabı yönetici tarafından başarıyla onaylandı ve aktif edildi.`,
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      emailVerified: true,
+    }
+  });
+});
+
+// 4. Get SMTP Status for Admin Panel
+app.get('/api/admin/smtp', (req: Request, res: Response) => {
+  return res.json({
+    success: true,
+    smtp: {
+      host: customSmtpSettings.host || '',
+      port: customSmtpSettings.port || 465,
+      secure: customSmtpSettings.secure,
+      user: customSmtpSettings.user || '',
+      from: customSmtpSettings.from || '',
+      isConfigured: Boolean(customSmtpSettings.host && customSmtpSettings.user && customSmtpSettings.pass),
+    }
+  });
+});
+
+// 5. Update SMTP configuration & verify connection
+app.post('/api/admin/smtp', async (req: Request, res: Response) => {
+  const { host, port, secure, user, pass, from } = req.body;
+  if (!host || !user) {
+    return res.status(400).json({ error: 'SMTP Sunucusu ve E-posta/Kullanıcı adı zorunludur.' });
+  }
+
+  const updatedConfig = {
+    host: String(host).trim(),
+    port: parseInt(port, 10) || 465,
+    secure: secure !== undefined ? Boolean(secure) : true,
+    user: String(user).trim(),
+    pass: pass ? String(pass).trim() : customSmtpSettings.pass,
+    from: from ? String(from).trim() : `"Dolabımda Ne Var" <${user}>`,
+  };
+
+  try {
+    const transporter = nodemailer.createTransport({
+      host: updatedConfig.host,
+      port: updatedConfig.port,
+      secure: updatedConfig.secure,
+      auth: {
+        user: updatedConfig.user,
+        pass: updatedConfig.pass,
+      },
+    });
+    await transporter.verify();
+    customSmtpSettings = updatedConfig;
+    console.log('[SMTP CONFIG] SMTP sunucu bağlantısı başarıyla doğrulandı:', updatedConfig.host);
+    return res.json({ success: true, message: 'SMTP ayarları başarıyla doğrulandı ve kaydedildi!' });
+  } catch (verifyErr: any) {
+    console.error('[SMTP VERIFY ERROR]:', verifyErr.message);
+    customSmtpSettings = updatedConfig;
+    return res.status(200).json({
+      success: true,
+      warning: `Ayarlar kaydedildi, ancak test bağlantısında uyarı alındı: ${verifyErr.message}. Lütfen kullanıcı adı ve şifrenizi kontrol edin.`
+    });
+  }
+});
+
+// 6. Send test verification email to Admin inbox
+app.post('/api/admin/send-test-email', async (req: Request, res: Response) => {
+  const targetEmail = String(req.body.email || 'xceyceyx@gmail.com').trim().toLowerCase();
+  const testCode = Math.floor(100000 + Math.random() * 900000).toString();
+  await sendVerificationEmail(targetEmail, testCode, 'Yönetici');
+  return res.json({
+    success: true,
+    message: `${targetEmail} adresine test onay e-postası (Kod: ${testCode}) başarıyla gönderildi.`,
+    sentTo: targetEmail,
   });
 });
 

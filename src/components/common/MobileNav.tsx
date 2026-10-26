@@ -1,17 +1,19 @@
 import React from 'react';
-import { Home, Layers, Sparkles, BookmarkCheck, CalendarDays, Settings } from 'lucide-react';
+import { Home, Layers, Sparkles, BookmarkCheck, CalendarDays, Settings, ShieldCheck } from 'lucide-react';
 import { NavTab } from './Sidebar';
 
 interface MobileNavProps {
   currentTab: NavTab;
   onSelectTab: (tab: NavTab) => void;
   itemCount: number;
+  isAdmin?: boolean;
 }
 
 export const MobileNav: React.FC<MobileNavProps> = ({
   currentTab,
   onSelectTab,
   itemCount,
+  isAdmin = false,
 }) => {
   const tabs: { id: NavTab; label: string; icon: React.ElementType }[] = [
     { id: 'home', label: 'Ana Sayfa', icon: Home },
@@ -21,6 +23,10 @@ export const MobileNav: React.FC<MobileNavProps> = ({
     { id: 'calendar', label: 'Takvim', icon: CalendarDays },
     { id: 'settings', label: 'Profil', icon: Settings },
   ];
+
+  if (isAdmin) {
+    tabs.push({ id: 'admin', label: 'Yönetici', icon: ShieldCheck });
+  }
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#FAF8F5]/95 backdrop-blur-lg border-t border-[#E7E0D8] px-2 py-2 flex items-center justify-around shadow-lg safe-bottom">
