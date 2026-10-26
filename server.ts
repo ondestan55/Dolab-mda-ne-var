@@ -183,13 +183,16 @@ async function sendVerificationEmail(recipientEmail: string, code: string, recip
         secure: port === 465,
         auth: { user, pass },
       });
-      const info = await transporter.sendMail({
-        from,
-        to: recipientEmail,
-        subject,
-        html: htmlContent,
-      });
-      console.log(`[AUTH EMAIL] ✓ Successfully delivered confirmation email via SMTP to ${recipientEmail} (msgId: ${info.messageId})`);
+      await Promise.race([
+        transporter.sendMail({
+          from,
+          to: recipientEmail,
+          subject,
+          html: htmlContent,
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('SMTP timeout (4s)')), 4000)),
+      ]);
+      console.log(`[AUTH EMAIL] ✓ Successfully delivered confirmation email via SMTP to ${recipientEmail}`);
       console.log(`[SERVER-SIDE LOG] [GÜVENLİK ONAY KODU] Alıcı: ${recipientEmail} -> Kod: ${code}`);
       return { success: true };
     } catch (smtpErr: any) {
@@ -197,31 +200,8 @@ async function sendVerificationEmail(recipientEmail: string, code: string, recip
     }
   }
 
-  // 2. Direct Ethereal / Test Transporter fallback
-  try {
-    const testAccount = await nodemailer.createTestAccount();
-    const transporter = nodemailer.createTransport({
-      host: testAccount.smtp.host,
-      port: testAccount.smtp.port,
-      secure: testAccount.smtp.secure,
-      auth: {
-        user: testAccount.user,
-        pass: testAccount.pass,
-      },
-    });
-    const info = await transporter.sendMail({
-      from: '"Dolabımda Ne Var AI" <destek@dolabim.ai>',
-      to: recipientEmail,
-      subject,
-      html: htmlContent,
-    });
-    console.log(`[AUTH EMAIL] Onay kodu e-postaya iletildi: ${recipientEmail} (Test Posta Kutusu: ${nodemailer.getTestMessageUrl(info)})`);
-    console.log(`[SERVER-SIDE LOG] [GÜVENLİK ONAY KODU] Alıcı: ${recipientEmail} -> Kod: ${code}`);
-    return { success: true };
-  } catch (err: any) {
-    console.log(`[SERVER-SIDE LOG] [GÜVENLİK ONAY KODU] Alıcı: ${recipientEmail} -> Kod: ${code}`);
-  }
-
+  // 2. Safe Fallback: Fast, reliable server-side logging without blocking on unreachable ports
+  console.log(`[SERVER-SIDE LOG] [GÜVENLİK ONAY KODU] Alıcı: ${recipientEmail} -> Kod: ${code}`);
   return { success: true };
 }
 
@@ -230,7 +210,7 @@ async function sendVerificationEmail(recipientEmail: string, code: string, recip
 // ----------------------------------------------------
 
 // 1. Register: generates 6-digit confirmation code and sends to email (NEVER exposed in UI)
-app.post('/api/auth/register', async (req: Request, res: Response) => {
+app.post('/api/auth/register', (req: Request, res: Response) => {
   const { name, email, password } = req.body;
   if (!name || !email || !password) {
     return res.status(400).json({ error: 'Lütfen tüm alanları doldurun (ad soyad, e-posta, şifre).' });
@@ -245,14 +225,49 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Şifre en az 6 karakter olmalıdır.' });
   }
 
+  // Generate 6-digit verification code
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = Date.now() + 15 * 60 * 1000;
+
+  // Dedicated Super-Administrator account handling (xceyceyx@gmail.com)
+  if (cleanEmail === 'xceyceyx@gmail.com') {
+    const adminUser: UserRecord = {
+      id: 'usr_admin_ceyhun',
+      name: String(name).trim() || 'Ceyhun (Sistem Yöneticisi)',
+      email: cleanEmail,
+      passwordHash: String(password),
+      emailVerified: true,
+      role: 'admin',
+      createdAt: Date.now(),
+    };
+    usersDb.set(cleanEmail, adminUser);
+    verificationsDb.delete(cleanEmail);
+
+    const token = 'tok_' + Buffer.from(`${adminUser.id}:${cleanEmail}:${Date.now()}`).toString('base64');
+
+    // Send verification email in background without blocking HTTP response
+    sendVerificationEmail(cleanEmail, code, adminUser.name).catch(() => {});
+
+    return res.json({
+      success: true,
+      message: 'Yönetici hesabınız başarıyla oluşturuldu ve aktifleştirildi!',
+      isAdmin: true,
+      user: {
+        id: adminUser.id,
+        name: adminUser.name,
+        email: adminUser.email,
+        role: 'admin',
+        emailVerified: true,
+        createdAt: adminUser.createdAt,
+      },
+      token,
+    });
+  }
+
   const existing = usersDb.get(cleanEmail);
   if (existing && existing.emailVerified) {
     return res.status(400).json({ error: 'Bu e-posta adresiyle kayıtlı bir hesap zaten var. Lütfen giriş yapın.' });
   }
-
-  // Generate 6-digit verification code
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
-  const expiresAt = Date.now() + 15 * 60 * 1000;
 
   verificationsDb.set(cleanEmail, {
     code,
@@ -261,8 +276,10 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
     expiresAt,
   });
 
-  // Send real email with code to user's actual email address
-  await sendVerificationEmail(cleanEmail, code, String(name).trim());
+  // Send real email with code in background without delaying or hanging the client response
+  sendVerificationEmail(cleanEmail, code, String(name).trim()).catch(err => {
+    console.error('[AUTH EMAIL] Background dispatch error:', err.message);
+  });
 
   return res.json({
     success: true,
@@ -344,8 +361,8 @@ app.post('/api/auth/resend-code', async (req: Request, res: Response) => {
     expiresAt,
   });
 
-  // Send real email with code to user's mailbox
-  await sendVerificationEmail(cleanEmail, code, existingRecord?.name);
+  // Send real email with code to user's mailbox in background
+  sendVerificationEmail(cleanEmail, code, existingRecord?.name).catch(() => {});
 
   return res.json({
     success: true,
@@ -396,7 +413,7 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
       expiresAt: Date.now() + 15 * 60 * 1000,
     });
 
-    await sendVerificationEmail(cleanEmail, code, user.name);
+    sendVerificationEmail(cleanEmail, code, user.name).catch(() => {});
 
     return res.status(403).json({
       error: 'E-posta adresiniz henüz onaylanmamış. Yeni bir onay kodu e-posta adresinize gönderildi.',

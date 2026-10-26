@@ -75,6 +75,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
     try {
       const res = await registerUser(cleanName, cleanEmail, password);
       if (res.success) {
+        if (res.isAdmin && res.user) {
+          onLoginSuccess(res.user, res.token);
+          return;
+        }
         setOtpDigits(['', '', '', '', '', '']);
         setSuccessNotice(`${cleanEmail} adresine 6 haneli güvenlik onay kodunuz gönderildi.`);
         setMode('verify');
@@ -317,34 +321,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-semibold text-[#44403C] uppercase tracking-wider">
-                    Şifre
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEmail('xceyceyx@gmail.com');
-                        setPassword('Admin2026!');
-                      }}
-                      className="text-[11px] font-semibold text-amber-800 hover:text-amber-950 underline flex items-center gap-0.5 cursor-pointer"
-                    >
-                      👑 Yönetici Girişi Doldur
-                    </button>
-                    <span className="text-[#D6CEC3]">|</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEmail('demo@dolabim.ai');
-                        setPassword('123456');
-                      }}
-                      className="text-[11px] text-[#8C7A6B] hover:text-[#1C1917] underline cursor-pointer"
-                    >
-                      Demo
-                    </button>
-                  </div>
-                </div>
+                <label className="block text-xs font-semibold text-[#44403C] uppercase tracking-wider mb-1.5">
+                  Şifre
+                </label>
                 <div className="relative">
                   <Lock className="w-4 h-4 text-[#A8A29E] absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
@@ -549,31 +528,18 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
                 </button>
               </div>
 
-              {/* Troubleshooting / Admin Approval Guide */}
-              <div className="mt-3 p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200/80 text-[11px] text-amber-950 space-y-1.5 leading-relaxed">
-                <div className="font-semibold flex items-center gap-1.5 text-amber-900">
-                  <ShieldCheck className="w-3.5 h-3.5 text-amber-700" />
+              {/* Troubleshooting Notice */}
+              <div className="mt-3 p-3.5 rounded-2xl bg-[#FAF8F5] border border-[#E7E0D8] text-[11px] text-[#57534E] space-y-1.5 leading-relaxed">
+                <div className="font-semibold flex items-center gap-1.5 text-[#1C1917]">
+                  <ShieldCheck className="w-3.5 h-3.5 text-[#8C7A6B]" />
                   E-posta Ulaşmadı mı?
                 </div>
-                <p className="text-amber-900/90">
+                <p>
                   1. Lütfen e-postanızın <strong>Spam / Gereksiz</strong> klasörünü kontrol ediniz.
                 </p>
-                <p className="text-amber-900/90">
-                  2. Sunucuda SMTP henüz aktif edilmediyse; <strong>xceyceyx@gmail.com</strong> hesabıyla yönetici olarak giriş yaparak <strong>Yönetici Paneli &gt; Onay Bekleyenler</strong> sekmesinden bu hesabı tek tıkla onaylayabilirsiniz.
+                <p>
+                  2. E-posta gelmediyse, yukarıdaki <strong>Kodu Tekrar Gönder</strong> butonunu kullanabilir veya e-posta adresinizi düzeltebilirsiniz.
                 </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMode('login');
-                    setEmail('xceyceyx@gmail.com');
-                    setPassword('Admin2026!');
-                    setErrorMessage(null);
-                    setSuccessNotice(null);
-                  }}
-                  className="font-semibold text-amber-950 underline hover:text-black flex items-center gap-1 cursor-pointer pt-0.5"
-                >
-                  👑 Yönetici Girişi Yap ve Kullanıcıyı Onayla →
-                </button>
               </div>
             </div>
           )}

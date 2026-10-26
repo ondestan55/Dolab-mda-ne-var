@@ -24,6 +24,20 @@ export interface AuthResponse {
   user?: AuthUser;
   token?: string;
   requiresVerification?: boolean;
+  isAdmin?: boolean;
+}
+
+// Robust JSON parse helper preventing SyntaxError: Unexpected token 'T' on HTML/proxy errors
+async function parseResponseJson<T = any>(res: Response): Promise<T> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    if (!res.ok) {
+      return { success: false, error: `Sunucu hatası (${res.status}). Lütfen tekrar deneyiniz.` } as T;
+    }
+    return { success: false, error: 'Sunucudan beklenmeyen bir yanıt formatı alındı.' } as T;
+  }
 }
 
 export async function registerUser(name: string, email: string, password: string): Promise<AuthResponse> {
@@ -33,7 +47,7 @@ export async function registerUser(name: string, email: string, password: string
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, email, password }),
     });
-    return await res.json();
+    return await parseResponseJson<AuthResponse>(res);
   } catch (err: any) {
     return { success: false, error: 'Sunucuya bağlanılamadı: ' + err.message };
   }
@@ -46,7 +60,7 @@ export async function verifyEmailCode(email: string, code: string): Promise<Auth
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, code }),
     });
-    return await res.json();
+    return await parseResponseJson<AuthResponse>(res);
   } catch (err: any) {
     return { success: false, error: 'Sunucuya bağlanılamadı: ' + err.message };
   }
@@ -59,7 +73,7 @@ export async function resendEmailCode(email: string): Promise<AuthResponse> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email }),
     });
-    return await res.json();
+    return await parseResponseJson<AuthResponse>(res);
   } catch (err: any) {
     return { success: false, error: 'Sunucuya bağlanılamadı: ' + err.message };
   }
@@ -72,7 +86,7 @@ export async function loginUser(email: string, password: string): Promise<AuthRe
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     });
-    return await res.json();
+    return await parseResponseJson<AuthResponse>(res);
   } catch (err: any) {
     return { success: false, error: 'Sunucuya bağlanılamadı: ' + err.message };
   }
